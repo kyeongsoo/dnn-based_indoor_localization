@@ -361,7 +361,7 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     dist = norm(utm_testing_original-utm_preds, axis=1)  # Euclidean distance
     flrs_diff = np.absolute(np.argmax(flrs_testing, axis=1) -
                             np.argmax(preds[1], axis=1))
-    error = dist + 50*blds_results + 4*flrs_diff # individual error [m]
+    error = dist + 50*(1-blds_results) + 4*flrs_diff # individual error [m]
     mean_error = error.mean()
     median_error = np.median(error)
 
@@ -576,35 +576,40 @@ if __name__ == "__main__":
         else:
             output_file.write("%d" % common_hidden_layers[0])
             for units in common_hidden_layers[1:]:
-                output_file.write("-%d\n" % units)
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Floor/location hidden layers: ")
         if floor_location_hidden_layers == '':
             output_file.write("N/A\n")
         else:
             output_file.write("%d" % floor_location_hidden_layers[0])
             for units in floor_location_hidden_layers[1:]:
-                output_file.write("-%d\n" % units)
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Building hidden layers: ")
         if building_hidden_layers == '':
             output_file.write("N/A\n")
         else:
             output_file.write("%d" % building_hidden_layers[0])
             for units in building_hidden_layers[1:]:
-                output_file.write("-%d\n" % units)
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Floor hidden layers: ")
         if floor_hidden_layers == '':
             output_file.write("N/A\n")
         else:
             output_file.write("%d" % floor_hidden_layers[0])
             for units in floor_hidden_layers[1:]:
-                output_file.write("-%d\n" % units)
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Location hidden layers: ")
         if location_hidden_layers == '':
             output_file.write("N/A\n")
         else:
             output_file.write("%d" % location_hidden_layers[0])
             for units in location_hidden_layers[1:]:
-                output_file.write("-%d\n" % units)
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Classifier activation: %s\n" % CLASSIFIER_ACTIVATION)
         # output_file.write("  - Classifier optimizer: %s\n" % CLASSIFIER_OPTIMIZER)
         # output_file.write("  - Classifier loss: %s\n" % CLASSIFIER_LOSS)
