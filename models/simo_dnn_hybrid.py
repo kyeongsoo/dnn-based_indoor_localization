@@ -355,18 +355,25 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     # acc_rfp = rfps_results.mean()
     # acc = (blds_results*flrs_results*rfps_results).mean()
     utm_preds = utm_scaler.inverse_transform(preds[2])  # inverse-scaled version
+    location_mse = ((utm_testing_original-utm_preds)**2).mean()
+
+    # calculate localization errors per EvAAL/IPIN 2015 competition
     dist = norm(utm_testing_original-utm_preds, axis=1)  # Euclidean distance
-    flrs_diff = np.absolute(np.argmax(flrs_testing, axis=1) - np.argmax(preds[1], axis=1))
-    error = dist + 50*blds_results + 4*flrs_diff  # individual error [m] defined by EvAAL/IPIN 2015 competition
+    flrs_diff = np.absolute(np.argmax(flrs_testing, axis=1) -
+                            np.argmax(preds[1], axis=1))
+    error = dist + 50*blds_results + 4*flrs_diff # individual error [m]
     mean_error = error.mean()
     median_error = np.median(error)
 
     Results = namedtuple('Results', ['metrics', 'history'])
-    Metrics = namedtuple('Metrics', ['building_acc', 'floor_acc', 'bf_acc', 'mean_error', 'median_error'])
-    results = Results(
-        metrics=Metrics(building_acc=blds_acc, floor_acc=flrs_acc, bf_acc=bf_acc, mean_error=mean_error, median_error=median_error),
-        history=history
-    )
+    Metrics = namedtuple('Metrics', ['building_acc', 'floor_acc', 'bf_acc',
+                                     'location_mse', 'mean_error',
+                                     'median_error'])
+    results = Results(metrics=Metrics(building_acc=blds_acc, floor_acc=flrs_acc,
+                                      bf_acc=bf_acc, location_mse=location_mse,
+                                      mean_error=mean_error,
+                                      median_error=median_error),
+                      history=history )
     return results
 
     
@@ -613,7 +620,7 @@ if __name__ == "__main__":
         output_file.write("  - Building hit rate [%%]: %.2f\n" % (100*results.metrics.building_acc))
         output_file.write("  - Floor hit rate [%%]: %.2f\n" % (100*results.metrics.floor_acc))
         output_file.write("  - Building-floor hit rate [%%]: %.2f\n" % (100*results.metrics.bf_acc))
-        # output_file.write("  - MSE (location): %e\n" % results.metrics.location_mse)
+        output_file.write("  - MSE (location): %e\n" % results.metrics.location_mse)
         output_file.write("  - Mean error [m]: %.2f\n" % results.metrics.mean_error)  # according to EvAAL/IPIN 2015 competition rule
         output_file.write("  - Median error [m]: %.2f\n" % results.metrics.median_error)  # ditto
 
