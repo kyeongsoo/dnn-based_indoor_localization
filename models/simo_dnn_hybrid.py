@@ -34,6 +34,7 @@ import pandas as pd
 from collections import namedtuple
 from numpy.linalg import norm
 from sklearn.preprocessing import StandardScaler
+from time import time
 from timeit import default_timer as timer
 
 
@@ -119,6 +120,7 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     from keras.engine.topology import Input
     from keras.layers import Dense, Dropout
     from keras.models import Model, Sequential, load_model
+    from keras.callbacks import TensorBoard
     K.clear_session()           # avoid clutter from old models / layers.
 
     # read both train and test dataframes for consistent label formation through one-hot encoding
@@ -187,9 +189,10 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     print("\nPart 1: buidling an SAE encoder ...")
 
     if os.path.isfile(sae_model_file) and (os.path.getmtime(sae_model_file) > os.path.getmtime(__file__)):
-        # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
-        model = load_model(sae_model_file, compile=False) 
-        model.compile(optimizer=SAE_OPTIMIZER, loss=SAE_LOSS)
+        model = load_model(sae_model_file)
+        # # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
+        # model = load_model(sae_model_file, compile=False) 
+        # model.compile(optimizer=SAE_OPTIMIZER, loss=SAE_LOSS)
     else:
         # N.B. each layer is named explicitly to avoid any conflicts with
         # calling model.compile() later
@@ -301,6 +304,7 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     )
     
     # train the model
+    tensorboard = TensorBoard(log_dir="logs/{}".format(time()), write_graph=True)
     startTime = timer()
     history = model.fit(
         x={'input': rss_training},
@@ -312,7 +316,8 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
         ),
         batch_size=batch_size,
         epochs=epochs,
-        verbose=VERBOSE
+        verbose=VERBOSE,
+        callbacks=[tensorboard]
     )
     elapsedTime = timer() - startTime
     print("Model trained in %e s." % elapsedTime)
