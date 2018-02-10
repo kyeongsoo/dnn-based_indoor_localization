@@ -76,11 +76,11 @@ validation_data_file = os.path.expanduser(
 
 
 def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
-                    common_dropout, classifier_dropout, regressor_dropout,
-                    sae_model_file, sae_hidden_layers, common_hidden_layers,
-                    floor_location_hidden_layers, building_hidden_layers,
-                    floor_hidden_layers, location_hidden_layers,
-                    building_weight, floor_weight, location_weight):
+                    dropout, sae_model_file, sae_hidden_layers,
+                    common_hidden_layers, floor_location_hidden_layers,
+                    building_hidden_layers, floor_hidden_layers,
+                    location_hidden_layers, building_weight, floor_weight,
+                    location_weight):
     """Multi-building and multi-floor indoor localisztion based on Wi-Fi fingerprinting with a single-input and multi-output deep neural network
 
     Keyword arguments:
@@ -89,9 +89,7 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     epoch -- number of epochs
     batch_size -- batch size
     training_ratio -- ratio of training data to the overall data
-    common_dropout -- dropout rate before and after common hidden layers
-    classifier_dropout -- dropout rate before and after classifier hidden layers for building and floor
-    regressor_dropout -- dropout rate before and after regressor hidden layers for location coordinates
+    dropout -- dropout rate before and after hidden layers
     sae_model_file -- full path name for SAE model load & save
     sae_hidden_layers -- list of numbers of units in SAE hidden layers
     common_hidden_layers -- list of numbers of units in common hidden layers
@@ -118,7 +116,8 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     import tensorflow as tf
     from keras import backend as K
     from keras.engine.topology import Input
-    from keras.layers import Dense, Dropout
+    from keras.layers import Activation, Dense, Dropout
+    from keras.layers.normalization import BatchNormalization
     from keras.models import Model, Sequential, load_model
     from keras.callbacks import TensorBoard
     K.clear_session()           # avoid clutter from old models / layers.
@@ -201,12 +200,12 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
         n_hl = 0
         for units in sae_hidden_layers[1:]:
             n_hl += 1
-            model.add(Dense(units, activation=SAE_ACTIVATION, use_bias=False, name='sae_hidden_' + str(n_hl)))  
-        model.add(Dense(num_aps, activation=SAE_ACTIVATION, use_bias=False, name='sae_output'))
+            model.add(Dense(units, activation='relu', use_bias=False, name='sae_hidden_' + str(n_hl)))  
+        model.add(Dense(num_aps, activation='sigmoid', use_bias=False, name='sae_output'))
         model.compile(optimizer=SAE_OPTIMIZER, loss=SAE_LOSS)
 
         # train the model
-        model.fit(rss_training, rss_training, batch_size=batch_size, epochs=epochs, verbose=VERBOSE)
+        model.fit(rss_training, rss_training, batch_size=batch_size, epochs=epochs, verbose=VERBOSE, shuffle=True)
 
         # remove the decoder part
         num_to_remove = (len(sae_hidden_layers) + 1) // 2
@@ -225,74 +224,111 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     print("\nPart 2: buidling a complete model ...")
 
     input = Input(shape=(num_aps,), name='input')
-    denoised_input = model(input) # denoise the input data using the SAE encoder
-
+    # denoised_input = model(input) # denoise the input data using the SAE encoder
+    x = model(input) # denoise the input data using the SAE encoder
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    denoised_input = Dropout(dropout)(x)
+    
     # common hidden layers for all
     if common_hidden_layers == '':
         common_input = denoised_input
     else:
-        x = Dropout(common_dropout)(denoised_input)
+        # x = Dropout(dropout)(denoised_input)
         for units in common_hidden_layers[:-1]:
-            x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
-            x = Dropout(common_dropout)(x)
-        common_input = Dense(
-            common_hidden_layers[-1],
-            activation='sigmoid',
-            use_bias=False,
-            name='common_input'
-        )(x)
+            # x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
+            x = Dense(units, use_bias=False)(x)
+            x = BatchNormalization()(x)
+            x = Activation('relu')(x)
+            x = Dropout(dropout)(x)
+        x = Dense(common_hidden_layers[-1], use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        common_input = Dropout(dropout, name='common_input')(x)
+        # common_input = Dense(
+        #     common_hidden_layers[-1],
+        #     activation='relu',
+        #     use_bias=False,
+        #     name='common_input'
+        # )(x)
     
     # building classifier output
-    x = Dropout(classifier_dropout)(common_input)
+    # x = Dropout(dropout)(common_input)
     for units in building_hidden_layers:
-        x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
-        x = Dropout(classifier_dropout)(x)
-    building_output = Dense(
-        num_blds,
-        activation='sigmoid',
-        use_bias=False,
-        name='building_output'
-    )(x)
+        # x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
+        x = Dense(units, use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dropout)(x)
+    x = Dense(num_blds, use_bias=False)(x)
+    x = BatchNormalization()(x)
+    building_output = Activation('softmax', name='building_output')(x)  # no dropout for an output layer
+    # building_output = Dense(
+    #     num_blds,
+    #     activation='softmax',   # for multi-class classification; resulting in
+    #                             # predicted probabilities in [0, 1]
+    #     use_bias=False,
+    #     name='building_output'
+    # )(x)
 
     # common hidden layers for floor and location/position
     if floor_location_hidden_layers == '':
         floor_location_input = common_input
     else:
-        x = Dropout(common_dropout)(common_input)
+        # x = Dropout(dropout)(common_input)
         for units in floor_location_hidden_layers[:-1]:
-            x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
-            x = Dropout(common_dropout)(x)
-        floor_location_input = Dense(
-            floor_location_hidden_layers[-1],
-            activation='sigmoid',
-            use_bias=False,
-            name='floor_location_input'
-        )(x)
+            # x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
+            x = Dense(units, use_bias=False)(x)
+            x = BatchNormalization()(x)
+            x = Activation('relu')(x)
+            x = Dropout(dropout)(x)
+        x = Dense(floor_location_hidden_layers[-1], use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        floor_location_input = Dropout(dropout, name='floor_location_input')(x)
+        # floor_location_input = Dense(
+        #     floor_location_hidden_layers[-1],
+        #     activation=CLASSIFIER_ACTIVATION,
+        #     use_bias=False,
+        #     name='floor_location_input'
+        # )(x)
     
     # floor classifier output
-    x = Dropout(classifier_dropout)(floor_location_input)
+    # x = Dropout(dropout)(floor_location_input)
     for units in floor_hidden_layers:
-        x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
-        x = Dropout(classifier_dropout)(x)
-    floor_output = Dense(
-        num_flrs,
-        activation='sigmoid',
-        use_bias=False,
-        name='floor_output'
-    )(x)
+        # x = Dense(units, activation=CLASSIFIER_ACTIVATION, use_bias=False)(x)
+        x = Dense(units, use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dropout)(x)
+    x = Dense(num_flrs, use_bias=False)(x)
+    x = BatchNormalization()(x)
+    floor_output = Activation('softmax', name='floor_output')(x)  # no dropout for an output layer
+    # floor_output = Dense(
+    #     num_flrs,
+    #     activation='softmax',
+    #     use_bias=False,
+    #     name='floor_output'
+    # )(x)
 
     # location/position regressor output
-    x = Dropout(regressor_dropout)(floor_location_input)
+    # x = Dropout(dropout)(floor_location_input)
     for units in location_hidden_layers:
-        x = Dense(units, activation=REGRESSOR_ACTIVATION, use_bias=False, kernel_initializer='normal')(x)
-        x = Dropout(regressor_dropout)(x)
-    location_output = Dense(
-        num_coords,
-        activation='linear',    # for a regressor output layer
-        use_bias=False,
-        kernel_initializer='normal',
-        name='location_output'
-    )(x)
+        # x = Dense(units, activation=REGRESSOR_ACTIVATION, use_bias=False, kernel_initializer='normal')(x)
+        x = Dense(units, use_bias=False, kernel_initializer='normal')(x)
+        x = BatchNormalization()(x)
+        x = Activation(REGRESSOR_ACTIVATION)(x)
+        x = Dropout(dropout)(x)
+    x = Dense(num_coords, use_bias=False, kernel_initializer='normal')(x)
+    x = BatchNormalization()(x)
+    location_output = Activation(REGRESSOR_ACTIVATION, name='location_output')(x)
+    # location_output = Dense(
+    #     num_coords,
+    #     activation='linear',    # for a regressor output layer
+    #     use_bias=False,
+    #     kernel_initializer='normal',
+    #     name='location_output'
+    # )(x)
 
     # build and compile a SIMO model
     model = Model(inputs=[input], outputs=[building_output, floor_output, location_output])
@@ -317,7 +353,8 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
         batch_size=batch_size,
         epochs=epochs,
         verbose=VERBOSE,
-        callbacks=[tensorboard]
+        callbacks=[tensorboard],
+        shuffle=True
     )
     elapsedTime = timer() - startTime
     print("Model trained in %e s." % elapsedTime)
@@ -416,21 +453,9 @@ if __name__ == "__main__":
         type=float)
     parser.add_argument(
         "-D",
-        "--common_dropout",
+        "--dropout",
         help=
-        "dropout rate before and after common hidden layers; default 0.0",
-        default=0.0,
-        type=float)
-    parser.add_argument(
-        "--classifier_dropout",
-        help=
-        "dropout rate before and after classifier hidden layers; default 0.0",
-        default=0.0,
-        type=float)
-    parser.add_argument(
-        "--regressor_dropout",
-        help=
-        "dropout rate before and after regressor hidden layers; default 0.0",
+        "dropout rate before and after hidden layers; default 0.0",
         default=0.0,
         type=float)
     parser.add_argument(
@@ -497,9 +522,7 @@ if __name__ == "__main__":
     epochs = args.epochs
     batch_size = args.batch_size
     training_ratio = args.training_ratio
-    common_dropout = args.common_dropout
-    classifier_dropout = args.classifier_dropout
-    regressor_dropout = args.regressor_dropout
+    dropout = args.dropout
     
     sae_hidden_layers = [int(i) for i in (args.sae_hidden_layers).split(',')]
     if args.common_hidden_layers == '':
@@ -535,7 +558,8 @@ if __name__ == "__main__":
     sae_model_file = base_file_name + '.hdf5'
     # output_file_base = base_file_name + '_C' + args.classifier_hidden_layers.replace(',', '-') \
     #              + '_D' + "{0:.2f}".format(dropout)
-    output_file_base = base_file_name + '_D' + "{0:.2f}".format(common_dropout)
+    now = datetime.datetime.now()
+    output_file_base = base_file_name + "_D{0:.2f}_".format(dropout) + now.strftime("%Y%m%d-%H%M%S")
     
     ### call simo_dnn_hybrid()
     results = simo_dnn_hybrid(
@@ -544,9 +568,7 @@ if __name__ == "__main__":
         epochs=epochs,
         batch_size=batch_size,
         training_ratio=training_ratio,
-        common_dropout=common_dropout,
-        classifier_dropout=classifier_dropout,
-        regressor_dropout=regressor_dropout,
+        dropout=dropout,
         sae_model_file=sae_model_file,
         sae_hidden_layers=sae_hidden_layers,
         common_hidden_layers=common_hidden_layers,
@@ -618,9 +640,7 @@ if __name__ == "__main__":
         output_file.write("  - Classifier activation: %s\n" % CLASSIFIER_ACTIVATION)
         # output_file.write("  - Classifier optimizer: %s\n" % CLASSIFIER_OPTIMIZER)
         # output_file.write("  - Classifier loss: %s\n" % CLASSIFIER_LOSS)
-        output_file.write("  - Common dropout rate: %.2f\n" % common_dropout)
-        output_file.write("  - Classifier dropout rate: %.2f\n" % classifier_dropout)
-        output_file.write("  - Regressor dropout rate: %.2f\n" % regressor_dropout)
+        output_file.write("  - Dropout rate: %.2f\n" % dropout)
         output_file.write("  - Loss weight for buildings: %.2f\n" % building_weight)
         output_file.write("  - Loss weight for floors: %.2f\n" % floor_weight)
         output_file.write("  - Loss weight for location: %.2f\n" % location_weight)
