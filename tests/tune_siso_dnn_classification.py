@@ -53,7 +53,7 @@ session_conf = tf.ConfigProto(
 from keras import backend as K
 # from keras.callbacks import TensorBoard
 from keras.wrappers.scikit_learn import KerasClassifier
-from sklearn.model_selection import cross_val_score, KFold
+from sklearn.model_selection import cross_val_score, KFold, GridSearchCV
 
 ### global variables
 training_data_file = os.path.expanduser(
@@ -243,16 +243,18 @@ if __name__ == "__main__":
         batch_size=batch_size,
         verbose=verbose)
 
+    # define the grid search parameters
+    dropout = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+    epochs = [50, 100]
+    param_grid = dict(batch_size=dropout, epochs=epochs)
+    
     # train and evaluate the model with k-fold cross validation
     startTime = timer()
-    # kfold = KFold(n_splits=10, shuffle=True, random_state=random_seed)
-    kfold = KFold(n_splits=3, shuffle=True, random_state=random_seed)
-    # model.fit(x_train, y_train, validation_data=(x_val, y_val), batch_size=batch_size, epochs=epochs, verbose=verbose)
-    results = cross_val_score(model, rss, tv_labels, cv=kfold)
+    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1)
+    grid_result = grid.fit(rss, tv_labels)
     elapsedTime = timer() - startTime
     print("Model trained in %e s." % elapsedTime)
     print("- Accuracy: {0:.2f}% ({1:.2f}%)".format((100 * results.mean()),
-                                                   (100 * results.std())))
 
     # # turn the given validation set into a testing set
     # # testing_df = pd.read_csv(validation_data_file, header=0)
@@ -327,7 +329,7 @@ if __name__ == "__main__":
     # loc_failure = n_loc_failure / n_success # rate of location estimation failure given that building and floor are correctly located
 
     ### print out final results
-    base_dir = '../results/test/' + (os.path.splitext(os.path.basename(__file__))[0]).replace('test_', '')
+    base_dir = '../results/tune/' + (os.path.splitext(os.path.basename(__file__))[0]).replace('tune_', '')
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
     base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
         epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))
