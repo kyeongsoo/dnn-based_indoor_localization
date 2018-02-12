@@ -63,6 +63,7 @@ CLASSIFIER_ACTIVATION = 'relu'
 # regressor
 #------------------------------------------------------------------------
 REGRESSOR_ACTIVATION = 'tanh'   # for nonlinear regression
+# REGRESSOR_ACTIVATION = 'relu'   # for linear regression
 # REGRESSOR_OPTIMIZER = 'adam'
 #------------------------------------------------------------------------
 # input files
@@ -585,9 +586,9 @@ if __name__ == "__main__":
     with open(output_file_base + '.org', 'w') as output_file:
         output_file.write("#+STARTUP: showall\n")  # unfold everything when opening
         output_file.write("* System parameters\n")
-        output_file.write("  - Numpy random number seed: %d\n" % random_seed)
+        output_file.write("  - Random number seed: %d\n" % random_seed)
         output_file.write("  - Ratio of training data to overall data: %.2f\n" % training_ratio)
-        output_file.write("  - Number of epochs: %d\n" % epochs)
+        output_file.write("  - Epochs: %d\n" % epochs)
         output_file.write("  - Batch size: %d\n" % batch_size)
         output_file.write("  - Optimizer: %s\n" % OPTIMIZER)
         output_file.write("  - SAE hidden layers: %d" % sae_hidden_layers[0])
