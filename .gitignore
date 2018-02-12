@@ -1,3 +1,8 @@
+# Ignore backup and temp files
+*.bak
+backups
+*~
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
