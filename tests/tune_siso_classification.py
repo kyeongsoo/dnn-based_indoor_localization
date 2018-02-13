@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ##
-# @file     test_siso_dnn_classification.py
+# @file     test_siso_classification.py
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2018-02-12
 #
-# @brief    Testing a scalable indoor localization system (up to reference points)
-#           based on Wi-Fi fingerprinting using a single-input and single-output
-#           (SIMO) deep neural network (DNN) model for multi-class
-#           classification of building, floor, and reference point.
+# @brief Testing a scalable indoor localization system (up to reference points)
+#        based on Wi-Fi fingerprinting using a single-input and single-output
+#        (SIMO) deep neural network (DNN) model for multi-class classification
+#        of building, floor, and reference point.
 #
-# @remarks  The results will be published in a paper submitted to the
-#           <a href="http://www.sciencedirect.com/science/journal/08936080">Elsevier Neural Networks</a>
-#           journal.
+# @remarks The results will be published in a paper submitted to the <a
+#          href="http://www.sciencedirect.com/science/journal/08936080">Elsevier
+#          Neural Networks</a> journal.
 
 ### import basic modules and a model to test
 import os
@@ -34,7 +34,7 @@ else:
     )
 import sys
 sys.path.insert(0, module_path)
-from siso_dnn_classification import siso_dnn_classification
+from siso_classification import siso_classification
 ### import other modules; keras and its backend will be loaded later
 import argparse
 import datetime
@@ -106,7 +106,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-F",
         "--frac",
-        help="fraction of the input data for hyperparameter search; default is 0.1",
+        help=
+        "fraction of the input data for hyperparameter search; default is 0.1",
         default=0.1,
         type=float)
     parser.add_argument(
@@ -146,7 +147,8 @@ if __name__ == "__main__":
     K.set_session(sess)
 
     ### load and pre-process the dataset
-    training_df = (pd.read_csv(training_data_file, header=0)).sample(frac=frac)  # pass header=0 to be able to replace existing names
+    training_df = (pd.read_csv(training_data_file, header=0)).sample(
+        frac=frac)  # pass header=0 to be able to replace existing names
     testing_df = pd.read_csv(
         validation_data_file,
         header=0)  # turn the validation set into a testing set
@@ -204,7 +206,7 @@ if __name__ == "__main__":
 
     # create a model
     model = KerasClassifier(
-        build_fn=siso_dnn_classification,
+        build_fn=siso_classification,
         input_dim=num_aps,
         output_dim=output_dim,
         hidden_layers=hidden_layers,
@@ -215,8 +217,9 @@ if __name__ == "__main__":
         verbose=verbose)
 
     # define the grid search parameters
-    optimizer = ['sgd', 'rmsprop', 'adagrad', 'adadelta', 'adam', 'adamax',
-                 'nadam']
+    optimizer = [
+        'sgd', 'rmsprop', 'adagrad', 'adadelta', 'adam', 'adamax', 'nadam'
+    ]
     # dropout = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     # epochs = [50, 100]
     # param_grid = dict(batch_size=dropout, epochs=epochs)
@@ -224,9 +227,9 @@ if __name__ == "__main__":
 
     # train and evaluate the model with k-fold cross validation
     startTime = timer()
-    if gpu_id >= 0:             # using GPU
+    if gpu_id >= 0:  # using GPU
         n_jobs = 1
-    else:                       # using CPU
+    else:  # using CPU
         n_jobs = -1
     grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=n_jobs)
     grid_result = grid.fit(rss, tv_labels)

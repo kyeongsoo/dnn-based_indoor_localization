@@ -20,11 +20,11 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Model
 
 
-def siso_dnn_classification(input_dim=512,
-                            output_dim=905,
-                            hidden_layers=[],
-                            optimizer='adam',
-                            dropout=0.0):
+def siso_classification(input_dim=512,
+                        output_dim=905,
+                        hidden_layers=[],
+                        optimizer='adam',
+                        dropout=0.0):
     input = Input(shape=(input_dim, ), name='input')
     x = BatchNormalization()(input)
     x = Activation('relu')(x)
