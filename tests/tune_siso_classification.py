@@ -17,29 +17,31 @@
 ### import basic modules and a model to test
 import os
 os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-import sys
-sys.path.insert(
-    0,
-    os.path.expanduser(
+import platform
+if platform.system() == 'Windows':
+    data_path = os.path.expanduser(
+        '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+    )
+    module_path = os.path.expanduser(
         '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    ))
+    )
+else:
+    data_path = os.path.expanduser(
+        '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+    )
+    module_path = os.path.expanduser(
+        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
+    )
+import sys
+sys.path.insert(0, module_path)
 from siso_dnn_classification import siso_dnn_classification
 ### import other modules; keras and its backend will be loaded later
 import argparse
 import datetime
-# import math
-# import matplotlib
-# if 'matplotlib.pyplot' not in sys.modules:
-#     if 'pylab' not in sys.modules:
-#         matplotlib.use('Agg') # directly plot to a file when no GUI is available
-#                               # (e.g., remote running)
-# import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pathlib
 import random as rn
-# from configparser import ConfigParser
-# from numpy.linalg import norm
 from sklearn.preprocessing import StandardScaler
 from time import time
 from timeit import default_timer as timer
@@ -56,12 +58,8 @@ from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import cross_val_score, KFold, GridSearchCV
 
 ### global variables
-training_data_file = os.path.expanduser(
-    '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc/trainingData2.csv'
-)  # '-110' for the lack of AP.
-validation_data_file = os.path.expanduser(
-    '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc/validationData2.csv'
-)  # ditto
+training_data_file = data_path + '/' + 'trainingData2.csv'  # '-110' for the lack of AP.
+validation_data_file = data_path + '/' + 'validationData2.csv'  # ditto
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -86,12 +84,6 @@ if __name__ == "__main__":
         help="batch size; default is 32",
         default=32,
         type=int)
-    # parser.add_argument(
-    #     "-T",
-    #     "--training_ratio",
-    #     help="ratio of training data to overall data: default is 0.9",
-    #     default=0.9,
-    #     type=float)
     parser.add_argument(
         "-H",
         "--hidden_layers",
@@ -112,24 +104,18 @@ if __name__ == "__main__":
         default=0.0,
         type=float)
     parser.add_argument(
+        "-F",
+        "--frac",
+        help="fraction of the input data for hyperparameter search; default is 0.1",
+        default=0.1,
+        type=float)
+    parser.add_argument(
         "-V",
         "--verbose",
         help=
         "verbosity mode: 0 = silent, 1 = progress bar, 2 = one line per epoch; default is 1",
         default=1,
         type=int)
-    # parser.add_argument(
-    #     "-N",
-    #     "--neighbours",
-    #     help="number of (nearest) neighbour locations to consider in positioning; default is 1",
-    #     default=1,
-    #     type=int)
-    # parser.add_argument(
-    #     "--scaling",
-    #     help=
-    #     "scaling factor for threshold (i.e., threshold=scaling*maximum) for the inclusion of nighbour locations to consider in positioning; default is 0.0",
-    #     default=0.0,
-    #     type=float)
     args = parser.parse_args()
 
     # set variables using command-line arguments
@@ -137,17 +123,14 @@ if __name__ == "__main__":
     random_seed = args.random_seed
     epochs = args.epochs
     batch_size = args.batch_size
-    # training_ratio = args.training_ratio
-    # sae_hidden_layers = [int(i) for i in (args.sae_hidden_layers).split(',')]
     if args.hidden_layers == '':
         hidden_layers = ''
     else:
         hidden_layers = [int(i) for i in (args.hidden_layers).split(',')]
     optimizer = args.optimizer
     dropout = args.dropout
+    frac = args.frac
     verbose = args.verbose
-    # N = args.neighbours
-    # scaling = args.scaling
 
     ### initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
@@ -163,11 +146,7 @@ if __name__ == "__main__":
     K.set_session(sess)
 
     ### load and pre-process the dataset
-    # option 1: with full data
-    # training_df = pd.read_csv(training_data_file, header=0) # pass header=0 to be able to replace existing names
-    # option 2: with 10% of data for development and hyperparameter tuning
-    training_df = (pd.read_csv(training_data_file, header=0)).sample(
-        frac=0.1)  # pass header=0 to be able to replace existing names
+    training_df = (pd.read_csv(training_data_file, header=0)).sample(frac=frac)  # pass header=0 to be able to replace existing names
     testing_df = pd.read_csv(
         validation_data_file,
         header=0)  # turn the validation set into a testing set
@@ -175,24 +154,24 @@ if __name__ == "__main__":
     # scale numerical data (over their flattened versions for joint scaling)
     rss_scaler = StandardScaler(
     )  # the same scaling will be applied to test data later
-    utm_scaler = StandardScaler()  # ditto
+    # utm_scaler = StandardScaler()  # ditto
 
     col_aps = [col for col in training_df.columns if 'WAP' in col]
     num_aps = len(col_aps)
     rss = np.asarray(training_df[col_aps], dtype=np.float32)
     rss = (rss_scaler.fit_transform(rss.reshape((-1, 1)))).reshape(rss.shape)
 
-    utm_x = np.asarray(training_df['LONGITUDE'], dtype=np.float32)
-    utm_y = np.asarray(training_df['LATITUDE'], dtype=np.float32)
-    utm = utm_scaler.fit_transform(np.column_stack((utm_x, utm_y)))
-    num_coords = utm.shape[1]
+    # utm_x = np.asarray(training_df['LONGITUDE'], dtype=np.float32)
+    # utm_y = np.asarray(training_df['LATITUDE'], dtype=np.float32)
+    # utm = utm_scaler.fit_transform(np.column_stack((utm_x, utm_y)))
+    # num_coords = utm.shape[1]
 
     # map reference points to sequential IDs per building & floor before building labels
     training_df['REFPOINT'] = training_df.apply(lambda row: str(int(row['SPACEID'])) + str(int(row['RELATIVEPOSITION'])), axis=1) # add a new column
     blds = np.unique(training_df[['BUILDINGID']])
     flrs = np.unique(training_df[['FLOOR']])
-    x_avg = {}
-    y_avg = {}
+    # x_avg = {}
+    # y_avg = {}
     for bld in blds:
         for flr in flrs:
             # map reference points to sequential IDs per building-floor before building labels
@@ -203,11 +182,11 @@ if __name__ == "__main__":
                 return_inverse=True)  # refer to numpy.unique manual
             training_df.loc[cond, 'REFPOINT'] = idx
 
-            # calculate the average coordinates of each building/floor
-            x_avg[str(bld) + '-' + str(flr)] = np.mean(
-                training_df.loc[cond, 'LONGITUDE'])
-            y_avg[str(bld) + '-' + str(flr)] = np.mean(
-                training_df.loc[cond, 'LATITUDE'])
+            # # calculate the average coordinates of each building/floor
+            # x_avg[str(bld) + '-' + str(flr)] = np.mean(
+            #     training_df.loc[cond, 'LONGITUDE'])
+            # y_avg[str(bld) + '-' + str(flr)] = np.mean(
+            #     training_df.loc[cond, 'LATITUDE'])
 
     # build labels for the multi-class classification of a building, a floor, and a reference point
     num_training_samples = len(training_df)
@@ -223,14 +202,6 @@ if __name__ == "__main__":
     # - 110 for REFPOINT
     output_dim = tv_labels.shape[1]
 
-    # # split the training set into training and validation sets; we will use the
-    # # validation set at a testing set.
-    # train_val_split = np.random.rand(len(train_AP_features)) < training_ratio # mask index array
-    # x_train = train_AP_features[train_val_split]
-    # y_train = train_labels[train_val_split]
-    # x_val = train_AP_features[~train_val_split]
-    # y_val = train_labels[~train_val_split]
-
     # create a model
     model = KerasClassifier(
         build_fn=siso_dnn_classification,
@@ -244,17 +215,30 @@ if __name__ == "__main__":
         verbose=verbose)
 
     # define the grid search parameters
-    dropout = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-    epochs = [50, 100]
-    param_grid = dict(batch_size=dropout, epochs=epochs)
-    
+    optimizer = ['sgd', 'rmsprop', 'adagrad', 'adadelta', 'adam', 'adamax',
+                 'nadam']
+    # dropout = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+    # epochs = [50, 100]
+    # param_grid = dict(batch_size=dropout, epochs=epochs)
+    param_grid = dict(optimizer=optimizer)
+
     # train and evaluate the model with k-fold cross validation
     startTime = timer()
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1)
+    if gpu_id >= 0:             # using GPU
+        n_jobs = 1
+    else:                       # using CPU
+        n_jobs = -1
+    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=n_jobs)
     grid_result = grid.fit(rss, tv_labels)
     elapsedTime = timer() - startTime
     print("Model trained in %e s." % elapsedTime)
-    print("- Accuracy: {0:.2f}% ({1:.2f}%)".format((100 * results.mean()),
+    print("Best: %f using %s" % (grid_result.best_score_,
+                                 grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
 
     # # turn the given validation set into a testing set
     # # testing_df = pd.read_csv(validation_data_file, header=0)
@@ -329,7 +313,8 @@ if __name__ == "__main__":
     # loc_failure = n_loc_failure / n_success # rate of location estimation failure given that building and floor are correctly located
 
     ### print out final results
-    base_dir = '../results/tune/' + (os.path.splitext(os.path.basename(__file__))[0]).replace('tune_', '')
+    base_dir = '../results/tune/' + (os.path.splitext(
+        os.path.basename(__file__))[0]).replace('tune_', '')
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
     base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
         epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))
@@ -353,8 +338,8 @@ if __name__ == "__main__":
             output_file.write("-%d" % units)
         output_file.write("\n")
         output_file.write("* Performance\n")
-        output_file.write("  - Accuracy: {0:.2f}% ({1:.2f}%)".format(
-            (100 * results.mean()), (100 * results.std())))
+        for mean, stdev, param in zip(means, stds, params):
+            output_file.write("%f (%f) with: %r" % (mean, stdev, param))
         # output_file.write("  - Loss (overall): %e\n" % results.losses.overall)
         # output_file.write("  - Accuracy (overall): %e\n" % results.accuracy.overall)
         # output_file.write("  - Building hit rate [%%]: %.2f\n" % (100*results.metrics.building_acc))

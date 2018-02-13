@@ -17,12 +17,23 @@
 ### import basic modules and a model to test
 import os
 os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-import sys
-sys.path.insert(
-    0,
-    os.path.expanduser(
+import platform
+if platform.system() == 'Windows':
+    data_path = os.path.expanduser(
+        '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+    )
+    module_path = os.path.expanduser(
         '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    ))
+    )
+else:
+    data_path = os.path.expanduser(
+        '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+    )
+    module_path = os.path.expanduser(
+        '~kks/research/ongoing/elsevier_nn_scalable_indoor_localization/program/models'
+    )
+import sys
+sys.path.insert(0, module_path)
 from siso_dnn_classification import siso_dnn_classification
 ### import other modules; keras and its backend will be loaded later
 import argparse
@@ -56,12 +67,8 @@ from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import cross_val_score, KFold
 
 ### global variables
-training_data_file = os.path.expanduser(
-    '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc/trainingData2.csv'
-)  # '-110' for the lack of AP.
-validation_data_file = os.path.expanduser(
-    '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc/validationData2.csv'
-)  # ditto
+training_data_file = data_path + '/' + 'trainingData2.csv'  # '-110' for the lack of AP.
+validation_data_file = data_path + '/' + 'validationData2.csv'  # ditto
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -102,8 +109,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-O",
         "--optimizer",
-        help="optimizer; default is 'adam'",
-        default='adam',
+        help="optimizer; default is 'nadam'",
+        default='nadam',
         type=str)
     parser.add_argument(
         "-D",
@@ -164,10 +171,12 @@ if __name__ == "__main__":
 
     ### load and pre-process the dataset
     # option 1: with full data
-    # training_df = pd.read_csv(training_data_file, header=0) # pass header=0 to be able to replace existing names
-    # option 2: with 10% of data for development and hyperparameter tuning
-    training_df = (pd.read_csv(training_data_file, header=0)).sample(
-        frac=0.1)  # pass header=0 to be able to replace existing names
+    training_df = pd.read_csv(
+        training_data_file,
+        header=0)  # pass header=0 to be able to replace existing names
+    # option 2: with 20% of data for development and hyperparameter tuning
+    # training_df = (pd.read_csv(training_data_file, header=0)).sample(
+    #     frac=0.2)  # pass header=0 to be able to replace existing names
     testing_df = pd.read_csv(
         validation_data_file,
         header=0)  # turn the validation set into a testing set
@@ -327,7 +336,8 @@ if __name__ == "__main__":
     # loc_failure = n_loc_failure / n_success # rate of location estimation failure given that building and floor are correctly located
 
     ### print out final results
-    base_dir = '../results/test/' + (os.path.splitext(os.path.basename(__file__))[0]).replace('test_', '')
+    base_dir = '../results/test/' + (os.path.splitext(
+        os.path.basename(__file__))[0]).replace('test_', '')
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
     base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
         epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))

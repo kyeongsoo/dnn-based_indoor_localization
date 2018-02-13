@@ -2,6 +2,10 @@
 *.bak
 backups
 *~
+*_v*.*
+
+# log file directory
+*/logs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
