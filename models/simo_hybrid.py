@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ##
-# @file     simo_dnn_hybrid.py
+# @file     simo_hybrid.py
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2018-02-02
 #
-# @brief    A scalable indoor localization system (up to location coordinates)
-#           based on Wi-Fi fingerprinting using a single-input and multi-output
-#           (SIMO) deep neural network (DNN) model for hybrid building and floor
-#           classification and locaton coordinates regression.
+# @brief A scalable indoor localization system (up to location coordinates)
+#        based on Wi-Fi fingerprinting using a single-input and multi-output
+#        (SIMO) deep neural network (DNN) model for hybrid building and floor
+#        classification and locaton coordinates regression.
 #
-# @remarks  The results will be published in a paper submitted to the
-#           <a href="http://www.sciencedirect.com/science/journal/08936080">Elsevier Neural Networks</a>
-#           journal.
+# @remarks The results will be published in a paper submitted to the <a
+#          href="http://www.sciencedirect.com/science/journal/08936080">Elsevier
+#          Neural Networks</a> journal.
 
 
 ### import basic modules first
@@ -76,7 +76,7 @@ validation_data_file = os.path.expanduser(
 )  # ditto
 
 
-def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
+def simo_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
                     dropout, sae_model_file, sae_hidden_layers,
                     common_hidden_layers, floor_location_hidden_layers,
                     building_hidden_layers, floor_hidden_layers,
@@ -116,8 +116,7 @@ def simo_dnn_hybrid(gpu_id, random_seed, epochs, batch_size, training_ratio,
     os.environ['TF_CPP_MIN_LOG_LEVEL']='2'  # supress warning messages
     import tensorflow as tf
     from keras import backend as K
-    from keras.engine.topology import Input
-    from keras.layers import Activation, Dense, Dropout
+    from keras.layers import Activation, Dense, Dropout, Input
     from keras.layers.normalization import BatchNormalization
     from keras.models import Model, Sequential, load_model
     from keras.callbacks import TensorBoard
@@ -551,7 +550,7 @@ if __name__ == "__main__":
     location_weight = args.location_weight
 
     # set full path and base for file names based on input parameter values
-    base_dir = '../results/' + os.path.splitext(os.path.basename(__file__))[0] + '/'
+    base_dir = '../results/test/' + os.path.splitext(os.path.basename(__file__))[0] + '/'
     base_file_name = base_dir \
                + 'B' + "{0:d}".format(batch_size) \
                + '_T' + "{0:.2f}".format(args.training_ratio) \
@@ -562,8 +561,8 @@ if __name__ == "__main__":
     now = datetime.datetime.now()
     output_file_base = base_file_name + "_D{0:.2f}_".format(dropout) + now.strftime("%Y%m%d-%H%M%S")
     
-    ### call simo_dnn_hybrid()
-    results = simo_dnn_hybrid(
+    ### call simo_hybrid()
+    results = simo_hybrid(
         gpu_id=gpu_id,
         random_seed=random_seed,
         epochs=epochs,

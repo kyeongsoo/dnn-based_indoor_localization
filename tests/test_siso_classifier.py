@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ##
-# @file     test_siso_classification.py
+# @file     test_siso_classifier.py
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2018-02-12
 #
@@ -34,7 +34,7 @@ else:
     )
 import sys
 sys.path.insert(0, module_path)
-from siso_classification import siso_classification
+from siso_classifier import siso_classifier
 ### import other modules; keras and its backend will be loaded later
 import argparse
 import datetime
@@ -119,6 +119,13 @@ if __name__ == "__main__":
         default=0.0,
         type=float)
     parser.add_argument(
+        "-F",
+        "--frac",
+        help=
+        "fraction of the input data for hyperparameter search; default is 0.1",
+        default=0.1,
+        type=float)
+    parser.add_argument(
         "-V",
         "--verbose",
         help=
@@ -152,6 +159,7 @@ if __name__ == "__main__":
         hidden_layers = [int(i) for i in (args.hidden_layers).split(',')]
     optimizer = args.optimizer
     dropout = args.dropout
+    frac = args.frac
     verbose = args.verbose
     # N = args.neighbours
     # scaling = args.scaling
@@ -170,13 +178,7 @@ if __name__ == "__main__":
     K.set_session(sess)
 
     ### load and pre-process the dataset
-    # option 1: with full data
-    training_df = pd.read_csv(
-        training_data_file,
-        header=0)  # pass header=0 to be able to replace existing names
-    # option 2: with 20% of data for development and hyperparameter tuning
-    # training_df = (pd.read_csv(training_data_file, header=0)).sample(
-    #     frac=0.2)  # pass header=0 to be able to replace existing names
+    training_df = (pd.read_csv(training_data_file, header=0)).sample(frac=frac)  # pass header=0 to be able to replace existing names
     testing_df = pd.read_csv(
         validation_data_file,
         header=0)  # turn the validation set into a testing set
@@ -242,9 +244,10 @@ if __name__ == "__main__":
 
     # create a model
     model = KerasClassifier(
-        build_fn=siso_classification,
+        build_fn=siso_classifier,
         input_dim=num_aps,
         output_dim=output_dim,
+        base_model=None,
         hidden_layers=hidden_layers,
         optimizer='adam',
         dropout=dropout,

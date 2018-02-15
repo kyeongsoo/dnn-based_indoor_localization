@@ -2,10 +2,13 @@
 *.bak
 backups
 *~
+*#
+*.tmp
 *_v*.*
+[Aa]rchive/
 
 # log file directory
-*/logs
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
