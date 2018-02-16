@@ -233,14 +233,16 @@ if __name__ == "__main__":
     x = Activation('relu')(x)
     x = Dropout(dropout)(x)
     for units in building_hidden_layers:
-        x = Dense(units, use_bias=False)(x)
+        # x = Dense(units, use_bias=False)(x)
+        x = Dense(units)(x)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
         x = Dropout(dropout)(x)
     bld_hl_output = x
 
     # building output
-    x = Dense(labels.building.shape[1], use_bias=False)(x)
+    # x = Dense(labels.building.shape[1], use_bias=False)(x)
+    x = Dense(labels.building.shape[1])(x)
     x = BatchNormalization()(x)
     bld_output = Activation(
         'softmax', name='building_output')(x)  # no dropout for an output layer
@@ -269,14 +271,16 @@ if __name__ == "__main__":
     # floor HLs (commont to floor and location outputs)
     x = bld_hl_output
     for units in floor_hidden_layers:
-        x = Dense(units, use_bias=False)(x)
+        # x = Dense(units, use_bias=False)(x)
+        x = Dense(units)(x)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
         x = Dropout(dropout)(x)
     flr_hl_output = x
 
     # floor output
-    x = Dense(labels.floor.shape[1], use_bias=False)(x)
+    # x = Dense(labels.floor.shape[1], use_bias=False)(x)
+    x = Dense(labels.floor.shape[1])(x)
     x = BatchNormalization()(x)
     flr_output = Activation(
         'softmax', name='floor_output')(x)  # no dropout for an output layer
@@ -313,13 +317,15 @@ if __name__ == "__main__":
     # location HLs
     x = flr_hl_output
     for units in location_hidden_layers:
-        x = Dense(units, use_bias=False)(x)
+        # x = Dense(units, use_bias=False)(x)
+        x = Dense(units)(x)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
         x = Dropout(dropout)(x)
 
     # location output
-    x = Dense(labels.location.shape[1], use_bias=False)(x)
+    # x = Dense(labels.location.shape[1], use_bias=False)(x)
+    x = Dense(labels.location.shape[1])(x)
     x = BatchNormalization()(x)
     loc_output = Activation(
         'softmax', name='location_output')(x)  # no dropout for an output layer
@@ -362,17 +368,17 @@ if __name__ == "__main__":
     elapsedTime = timer() - startTime
     print("Building-floor-location classifier trained in %e s." % elapsedTime)
 
-    # turn the given validation set into a testing set
-    # testing_df = pd.read_csv(validation_data_file, header=0)
-    test_AP_features = scale(
-        np.asarray(testing_df.iloc[:, 0:520]).astype(float),
-        axis=1)  # convert integer to float and scale jointly (axis=1)
-    x_test_utm = np.asarray(testing_df['LONGITUDE'])
-    y_test_utm = np.asarray(testing_df['LATITUDE'])
-    # blds = np.asarray(pd.get_dummies(testing_df['BUILDINGID']))
-    blds = blds_all[len_train:]
-    # flrs = np.asarray(pd.get_dummies(testing_df['FLOOR']))
-    flrs = flrs_all[len_train:]
+    # # turn the given validation set into a testing set
+    # # testing_df = pd.read_csv(validation_data_file, header=0)
+    # test_AP_features = scale(
+    #     np.asarray(testing_df.iloc[:, 0:520]).astype(float),
+    #     axis=1)  # convert integer to float and scale jointly (axis=1)
+    # x_test_utm = np.asarray(testing_df['LONGITUDE'])
+    # y_test_utm = np.asarray(testing_df['LATITUDE'])
+    # # blds = np.asarray(pd.get_dummies(testing_df['BUILDINGID']))
+    # blds = blds_all[len_train:]
+    # # flrs = np.asarray(pd.get_dummies(testing_df['FLOOR']))
+    # flrs = flrs_all[len_train:]
 
     ### evaluate the model
     print("\nPart 3: evaluating the model ...")
