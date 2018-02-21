@@ -8,7 +8,7 @@
 # @brief A scalable indoor localization system (up to reference points) based on
 #        Wi-Fi fingerprinting using a sequential multi-class classification of
 #        building, floor, and location (reference point) with a single-input and
-#        multi-output (SIMO) deep neural network (DNN) models
+#        multi-output (SIMO) deep neural network (DNN) model.
 #
 # @remarks The results will be published in a paper submitted to the <a
 #          href="http://www.sciencedirect.com/science/journal/08936080">Elsevier
@@ -41,7 +41,7 @@ else:
 import sys
 sys.path.insert(0, utils_path)
 sys.path.insert(0, models_path)
-# from siso_hl import siso_hl
+from deep_autoencoder import deep_autoencoder
 from ujiindoorloc import UJIIndoorLoc
 ### import other modules; keras and its backend will be loaded later
 import argparse
@@ -66,6 +66,7 @@ from keras import backend as K
 from keras.callbacks import TensorBoard
 from keras.layers import Activation, Dense, Dropout, Input
 from keras.layers.normalization import BatchNormalization
+from keras.metrics import categorical_accuracy
 from keras.models import Model
 
 if __name__ == "__main__":
@@ -80,6 +81,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "-R", "--random_seed", help="random seed", default=0, type=int)
     parser.add_argument(
+        "-F",
+        "--frac",
+        help=
+        "fraction of input data to load for training and validation; default is 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "--validation_split",
+        help=
+        "fraction of training data to be used as validation data: default is 0.2",
+        default=0.2,
+        type=float)
+    parser.add_argument(
+        "-P",
+        "--preprocessor",
+        help=
+        "preprocessor to scale/normalize input data before training and validation; default is 'standard_scaler'",
+        default='standard_scaler',
+        type=str)
+    parser.add_argument(
         "-B",
         "--batch_size",
         help="batch size; default is 32",
@@ -91,45 +112,6 @@ if __name__ == "__main__":
         help="number of epochs; default is 50",
         default=50,
         type=int)
-    parser.add_argument(
-        "--validation_split",
-        help=
-        "fraction of training data to be used as validation data: default is 0.2",
-        default=0.2,
-        type=float)
-    parser.add_argument(
-        "--building_hidden_layers",
-        help=
-        "comma-separated numbers of units in hidden layers for buildings; default is '128,128'",
-        default='128,128',
-        type=str)
-    parser.add_argument(
-        "--floor_hidden_layers",
-        help=
-        "comma-separated numbers of units in additional hidden layers for floors; default is '128,128'",
-        default='128,128',
-        type=str)
-    parser.add_argument(
-        "--location_hidden_layers",
-        help=
-        "comma-separated numbers of units in additional hidden layers for locations; default is '128,128'",
-        default='128,128',
-        type=str)
-    parser.add_argument(
-        "--building_weight",
-        help="loss weight for a building; default 1.0",
-        default=1.0,
-        type=float)
-    parser.add_argument(
-        "--floor_weight",
-        help="loss weight for a floor; default 1.0",
-        default=1.0,
-        type=float)
-    parser.add_argument(
-        "--location_weight",
-        help="loss weight for a location; default 1.0",
-        default=1.0,
-        type=float)
     parser.add_argument(
         "-O",
         "--optimizer",
@@ -143,20 +125,6 @@ if __name__ == "__main__":
         default=0.0,
         type=float)
     parser.add_argument(
-        "-F",
-        "--frac",
-        help=
-        "fraction of input data to load for training and validation; default is 1.0",
-        default=1.0,
-        type=float)
-    parser.add_argument(
-        "-V",
-        "--verbose",
-        help=
-        "verbosity mode: 0 = silent, 1 = progress bar, 2 = one line per epoch; default is 1",
-        default=1,
-        type=int)
-    parser.add_argument(
         "-N",
         "--neighbours",
         help=
@@ -169,14 +137,72 @@ if __name__ == "__main__":
         "scaling factor for threshold (i.e., threshold=scaling*maximum) for the inclusion of nighbour locations to consider in positioning; default is 0.0",
         default=0.0,
         type=float)
+    parser.add_argument(
+        "--dae_hidden_layers",
+        help=
+        "comma-separated numbers of units in hidden layers for deep autoencoder; default is '256,128,256'",
+        default='256,128,256',
+        type=str)
+    parser.add_argument(
+        "--building_hidden_layers",
+        help=
+        "comma-separated numbers of units in hidden layers for building; default is '128,128'",
+        default='128,128',
+        type=str)
+    parser.add_argument(
+        "--floor_hidden_layers",
+        help=
+        "comma-separated numbers of units in additional hidden layers for floor; default is '128,128'",
+        default='128,128',
+        type=str)
+    parser.add_argument(
+        "--location_hidden_layers",
+        help=
+        "comma-separated numbers of units in additional hidden layers for location; default is '128,128'",
+        default='128,128',
+        type=str)
+    parser.add_argument(
+        "--building_weight",
+        help="loss weight for building; default 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "--floor_weight",
+        help="loss weight for floor; default 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "--location_weight",
+        help="loss weight for location; default 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "-V",
+        "--verbose",
+        help=
+        "verbosity mode: 0 = silent, 1 = progress bar, 2 = one line per epoch; default is 1",
+        default=1,
+        type=int)
     args = parser.parse_args()
 
     # set variables using command-line arguments
     gpu_id = args.gpu_id
     random_seed = args.random_seed
+    frac = args.frac
+    validation_split = args.validation_split
+    preprocessor = args.preprocessor
     batch_size = args.batch_size
     epochs = args.epochs
-    validation_split = args.validation_split
+    optimizer = args.optimizer
+    dropout = args.dropout
+    N = args.neighbours
+    scaling = args.scaling
+    if args.dae_hidden_layers == '':
+        dae_hidden_layers = ''
+    else:
+        dae_hidden_layers = [
+            int(i) for i in (args.dae_hidden_layers).split(',')
+        ]
     if args.building_hidden_layers == '':
         building_hidden_layers = ''
     else:
@@ -198,13 +224,8 @@ if __name__ == "__main__":
     building_weight = args.building_weight
     floor_weight = args.floor_weight
     location_weight = args.location_weight
-    optimizer = args.optimizer
-    dropout = args.dropout
-    frac = args.frac
     verbose = args.verbose
-    N = args.neighbours
-    scaling = args.scaling
-
+    
     ### initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
     rn.seed(random_seed)
@@ -220,8 +241,29 @@ if __name__ == "__main__":
 
     ### load dataset after scaling
     print("\nPart 1: loading UJIIndoorLoc data ...")
+
+    if preprocessor == 'standard_scaler':
+        from sklearn.preprocessing import StandardScaler
+        rss_scaler = StandardScaler()
+        utm_scaler = StandardScaler()
+    elif preprocessor == 'minmax_scaler':
+        from sklearn.preprocessing import MinMaxScaler
+        rss_scaler = MinMaxScaler()
+        utm_scaler = MinMaxScaler()
+    elif preprocessor == 'normalizer':
+        from sklearn.preprocessing import Normalizer
+        rss_scaler = Normalizer()
+        utm_scaler = Normalizer()
+    else:
+        rss_scaler = None
+        utm_scaler = None
+
     ujiindoorloc = UJIIndoorLoc(
-        data_path, frac=frac, scale=True, classification_mode='hierarchical')
+        data_path,
+        frac=frac,
+        rss_scaler=rss_scaler,
+        utm_scaler=utm_scaler,
+        classification_mode='hierarchical')
     training_df, training_data, testing_df, testing_data = ujiindoorloc.load_data(
     )
 
@@ -235,8 +277,21 @@ if __name__ == "__main__":
     tensorboard = TensorBoard(
         log_dir="logs/{}".format(time()), write_graph=True)
 
+    ### (optional) build deep autoencoder
+    if dae_hidden_layers != '':
+        print("\nPart 2.0: buidling a DAE model ...")
+        model = deep_autoencoder(
+            rss,
+            hidden_layers=dae_hidden_layers,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_split=validation_split)
+        x = model(input)
+    else:
+        x = input
+
     print("\nPart 2.1: buidling and training a building classifier ...")
-    x = BatchNormalization()(input)
+    x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(dropout)(x)
     for units in building_hidden_layers:
@@ -265,10 +320,11 @@ if __name__ == "__main__":
         epochs=epochs,
         verbose=verbose,
         validation_split=validation_split,
-        validation_data=(
-            {'input': testing_data.rss_scaled},
-            {'building_output': testing_data.labels.building}
-        ),
+        # validation_data=({
+        #     'input': testing_data.rss_scaled
+        # }, {
+        #     'building_output': testing_data.labels.building
+        # }),
         callbacks=[tensorboard],
         shuffle=True)
     elapsedTime = timer() - startTime
@@ -310,11 +366,12 @@ if __name__ == "__main__":
         epochs=epochs,
         verbose=verbose,
         validation_split=validation_split,
-        validation_data=(
-            {'input': testing_data.rss_scaled},
-            {'building_output': testing_data.labels.building,
-             'floor_output': testing_data.labels.floor}
-        ),
+        # validation_data=({
+        #     'input': testing_data.rss_scaled
+        # }, {
+        #     'building_output': testing_data.labels.building,
+        #     'floor_output': testing_data.labels.floor
+        # }),
         callbacks=[tensorboard],
         shuffle=True)
     elapsedTime = timer() - startTime
@@ -366,6 +423,13 @@ if __name__ == "__main__":
         epochs=epochs,
         verbose=verbose,
         validation_split=validation_split,
+        # validation_data=({
+        #     'input': testing_data.rss_scaled
+        # }, {
+        #     'building_output': testing_data.labels.building,
+        #     'floor_output': testing_data.labels.floor,
+        #     'location_output': testing_data.labels.location
+        # }),
         callbacks=[tensorboard],
         shuffle=True)
     elapsedTime = timer() - startTime
@@ -464,12 +528,25 @@ if __name__ == "__main__":
         output_file.write(
             "#+STARTUP: showall\n")  # unfold everything when opening
         output_file.write("* System parameters\n")
-        output_file.write("  - Optimizer: %s\n" % optimizer)
+        output_file.write("  - GPU ID: %d\n" % gpu_id)
         output_file.write("  - Random number seed: %d\n" % random_seed)
+        output_file.write("  - Fraction of data loaded for training and validation: %.2f\n" % frac)
         output_file.write("  - Validation split: %.2f\n" % validation_split)
-        output_file.write("  - Epochs: %d\n" % epochs)
+        output_file.write("  - Preprocessor for scaling/normalizing input data: %s\n" % preprocessor)
         output_file.write("  - Batch size: %d\n" % batch_size)
+        output_file.write("  - Epochs: %d\n" % epochs)
+        output_file.write("  - Optimizer: %s\n" % optimizer)
         output_file.write("  - Dropout rate: %.2f\n" % dropout)
+        output_file.write("  - Number of (nearest) neighbour locations: %d\n" % N)
+        output_file.write("  - Scaling factor for threshold: %.2f\n" % scaling)
+        output_file.write("  - Deep autoencoder hidden layers: ")
+        if dae_hidden_layers == '':
+            output_file.write("N/A\n")
+        else:
+            output_file.write("%d" % dae_hidden_layers[0])
+            for units in dae_hidden_layers[1:]:
+                output_file.write("-%d" % units)
+            output_file.write("\n")
         output_file.write("  - Building hidden layers: ")
         if building_hidden_layers == '':
             output_file.write("N/A\n")
@@ -494,6 +571,9 @@ if __name__ == "__main__":
             for units in location_hidden_layers[1:]:
                 output_file.write("-%d" % units)
             output_file.write("\n")
+        output_file.write("  - Building loss weight: %.2f\n" % building_weight)
+        output_file.write("  - Floor loss weight: %.2f\n" % floor_weight)
+        output_file.write("  - Location loss weight: %.2f\n" % location_weight)
         output_file.write("\n")
         output_file.write("* Performance\n")
         output_file.write(" - Building hit rate [%%]: %.2f\n" %

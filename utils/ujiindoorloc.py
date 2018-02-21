@@ -20,19 +20,20 @@
 import numpy as np
 import pandas as pd
 from collections import namedtuple
-from sklearn.preprocessing import StandardScaler
 
 
 class UJIIndoorLoc(object):
     def __init__(self,
                  path='.',
                  frac=1.0,
-                 scale=True,
+                 rss_scaler=None,
+                 utm_scaler=None,
                  classification_mode='hierarchical'):
         self.training_fname = path + '/' + 'trainingData2.csv'  # '-110' for the lack of AP.
         self.testing_fname = path + '/' + 'validationData2.csv'  # use validation data as testing data
         self.frac = frac
-        self.scale = scale
+        self.rss_scaler = rss_scaler  # a scaler provided by sklearn.preprocessing module
+        self.utm_scaler = utm_scaler  # ditto
         self.classification_mode = classification_mode
 
     def load_data(self):
@@ -44,35 +45,39 @@ class UJIIndoorLoc(object):
         col_aps = [col for col in self.training_df.columns if 'WAP' in col]
         num_aps = len(col_aps)
 
-        # process training RSS and UTM coordinates
-        # N.B. double precision needed for proper working with StandadScaler
+        # process RSS
+        # N.B. double precision needed for proper working with scaler
         training_rss = np.asarray(self.training_df[col_aps], dtype=np.float)
+        testing_rss = np.asarray(self.testing_df[col_aps], dtype=np.float)
+        if self.rss_scaler != None:
+            # scale numerical data (over their flattened versions for joint scaling)
+            training_rss_scaled = (self.rss_scaler.fit_transform(
+                training_rss.reshape((-1, 1)))).reshape(training_rss.shape)
+            testing_rss_scaled = (self.rss_scaler.transform(
+                testing_rss.reshape(
+                    (-1, 1)))).reshape(testing_rss.shape)  # scaled version
+        else:
+            training_rss_scaled = training_rss
+            testing_rss_scaled = testing_rss
+
+        # process UTM coordinates
         training_utm_x = np.asarray(
             self.training_df['LONGITUDE'], dtype=np.float)
         training_utm_y = np.asarray(
             self.training_df['LATITUDE'], dtype=np.float)
         training_utm = np.column_stack((training_utm_x, training_utm_y))
         num_coords = training_utm.shape[1]
-        if self.scale == True:
-            # scale numerical data (over their flattened versions for joint scaling)
-            rss_scaler = StandardScaler(
-            )  # the same scaling will be applied to test data later
-            utm_scaler = StandardScaler()  # ditto
-            training_rss_scaled = (rss_scaler.fit_transform(
-                training_rss.reshape((-1, 1)))).reshape(training_rss.shape)
-            training_utm_scaled = utm_scaler.fit_transform(training_utm)
-
-        # process testing RSS and UTM coordinates
-        testing_rss = np.asarray(self.testing_df[col_aps], dtype=np.float)
-        testing_rss_scaled = (rss_scaler.transform(
-            testing_rss.reshape(
-                (-1, 1)))).reshape(testing_rss.shape)  # scaled version
         testing_utm_x = np.asarray(
             self.testing_df['LONGITUDE'], dtype=np.float)
         testing_utm_y = np.asarray(self.testing_df['LATITUDE'], dtype=np.float)
         testing_utm = np.column_stack((testing_utm_x, testing_utm_y))
-        testing_utm_scaled = utm_scaler.transform(
-            testing_utm)  # scaled version
+        if self.utm_scaler != None:
+            training_utm_scaled = self.utm_scaler.fit_transform(training_utm)
+            testing_utm_scaled = self.utm_scaler.transform(
+                testing_utm)  # scaled version
+        else:
+            training_utm_scaled = training_utm
+            testing_utm_scaled = testing_utm
 
         # map locations (reference points) to sequential IDs per building &
         # floor before building labels
@@ -98,17 +103,21 @@ class UJIIndoorLoc(object):
                     self.training_df.loc[cond, 'REFPOINT'] = idx
 
                     # calculate the average coordinates of each building/floor
-                    df = self.training_df.loc[cond, ['REFPOINT', 'LONGITUDE', 'LATITUDE']].drop_duplicates(subset='REFPOINT')
+                    df = self.training_df.loc[cond, [
+                        'REFPOINT', 'LONGITUDE', 'LATITUDE'
+                    ]].drop_duplicates(subset='REFPOINT')
                     x = np.mean(df.loc[cond, 'LONGITUDE'])
                     y = np.mean(df.loc[cond, 'LATITUDE'])
-                    training_utm_avg[str(bld) + '-' + str(flr)] = np.array((x, y))
+                    training_utm_avg[str(bld) + '-' + str(flr)] = np.array((x,
+                                                                            y))
                     n = len(df)
-                    sum_x += n*x
-                    sum_y += n*y
+                    sum_x += n * x
+                    sum_y += n * y
                     n_rfps += n
 
             # calculate the average coordinates of each building
-            training_utm_avg[str(bld)] = np.array((sum_x/n_rfps, sum_y/n_rfps))
+            training_utm_avg[str(bld)] = np.array((sum_x / n_rfps,
+                                                   sum_y / n_rfps))
 
         # build labels for sequential multi-class classification of a building, a floor, and a location (reference point)
         num_training_samples = len(self.training_df)
@@ -170,3 +179,65 @@ class UJIIndoorLoc(object):
         self.testing_data = testing_data
 
         return self.training_df, self.training_data, self.testing_df, self.testing_data
+
+
+if __name__ == "__main__":
+    ### import basic modules and a model to test
+    import os
+    import platform
+    if platform.system() == 'Windows':
+        data_path = os.path.expanduser(
+            '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+        )
+    else:
+        data_path = os.path.expanduser(
+            '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+        )
+    ### import other modules; keras and its backend will be loaded later
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-F",
+        "--frac",
+        help=
+        "fraction of input data to load for training and validation; default is 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "-P",
+        "--preprocessor",
+        help=
+        "preprocessor to scale/normalize input data before training and validation; default is 'standard_scaler'",
+        default='standard_scaler',
+        type=str)
+    args = parser.parse_args()
+    frac = args.frac
+    preprocessor = args.preprocessor
+
+    ### load dataset after scaling
+    print("Loading UJIIndoorLoc data ...")
+
+    if preprocessor == 'standard_scaler':
+        from sklearn.preprocessing import StandardScaler
+        rss_scaler = StandardScaler()
+        utm_scaler = StandardScaler()
+    elif preprocessor == 'minmax_scaler':
+        from sklearn.preprocessing import MinMaxScaler
+        rss_scaler = MinMaxScaler()
+        utm_scaler = MinMaxScaler()
+    elif preprocessor == 'normalizer':
+        from sklearn.preprocessing import Normalizer
+        rss_scaler = Normalizer()
+        utm_scaler = Normalizer()
+    else:
+        rss_scaler = None
+        utm_scaler = None
+
+    ujiindoorloc = UJIIndoorLoc(
+        data_path,
+        frac=frac,
+        rss_scaler=rss_scaler,
+        utm_scaler=utm_scaler,
+        classification_mode='hierarchical')
+    training_df, training_data, testing_df, testing_data = ujiindoorloc.load_data(
+    )

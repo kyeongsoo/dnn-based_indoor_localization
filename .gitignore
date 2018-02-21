@@ -3,9 +3,11 @@
 backups
 *~
 *#
+.#*
 *.tmp
 *_v*.*
 [Aa]rchive/
+saved/
 
 # log file directory
 logs/
