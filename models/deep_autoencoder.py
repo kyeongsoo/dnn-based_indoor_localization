@@ -12,7 +12,7 @@ import os
 import sys
 import pathlib
 ### import keras and its backend (e.g., tensorflow)
-from keras.layers import Activation, Dense, Dropout, Input
+from keras.layers import Dense
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential, load_model
 

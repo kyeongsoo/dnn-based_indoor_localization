@@ -15,6 +15,7 @@
 #              https://www.kaggle.com/baogorek/autoencoder-with-greedy-layer-wise-pretraining/notebook
 
 import os
+import numpy as np
 import pathlib
 ### import keras and its backend (e.g., tensorflow)
 from keras.layers import Activation, Dense, Dropout, Input
@@ -22,28 +23,42 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential, load_model
 
 
+def masking_noise(x, corruption_level):
+    x_corrupted = x
+    x_corrupted[np.random.rand(len(x)) < corruption_level] = 0.0
+    return x_corrupted
+
+
 def sdae(input_data=None,
          preprocessor='standard_scaler',
          hidden_layers=[],
          model_fname=None,
          optimizer='nadam',
-         loss='mse',
+         corruption_level=0.1,
          batch_size=32,
          epochs=100,
          validation_split=0.0):
-    """Deep autoencoder
+    """Stacked denoising autoencoder
 
     Keyword arguments:
     input_data -- two-dimensional array of RSSs
-    preprocessor -- preprocessor used to scale/normalize input data (information only)
+    preprocessor -- preprocessor used to scale/normalize the original input data (information only)
     hidden_layers -- list of numbers of units in SDAE hidden layers
     model_fname -- full path name for SDAE model load & save
     optimizer -- optimizer for training
-    loss -- loss function for training
+    corruption_level -- corruption level of masking noise
     batch_size -- size of batch
     epochs -- number of epochs
     validation_split -- fraction of training data to be used as validation data
     """
+
+    if (preprocessor == 'standard_scaler') or (preprocessor == 'normalizer'):
+        loss = 'mean_squared_error'
+    elif preprocessor == 'minmax_scaler':
+        loss = 'binary_crossentropy'
+    else:
+        print("{0:s} preprocessor is not supported.".format(preprocessor))
+        sys.exit()
 
     if model_fname == None:
         model_fname = './saved/sdae_H' + '-'.join(map(
@@ -60,123 +75,63 @@ def sdae(input_data=None,
         # each layer is named explicitly to avoid any conflicts in
         # model.compile() by models using SDAE
 
-        # TODO: generlize the following
-        # Layer by layer pretraining Models
+        input_dim = input_data.shape[1]  # number of RSSs per sample
+        input = Input(shape=(input_dim, ), name='sdae_input')
 
-        # Layer 1
-        input_img = Input(shape=(784, ))
-        distorted_input1 = Dropout(.1)(input_img)
-        encoded1 = Dense(800, activation='sigmoid')(distorted_input1)
-        encoded1_bn = BatchNormalization()(encoded1)
-        decoded1 = Dense(784, activation='sigmoid')(encoded1_bn)
+        encoded_input = []
+        distorted_input = []
+        encoded = []
+        # encoded_bn = []
+        decoded = []
+        autoencoder = []
+        encoder = []
+        x = input_data
+        n_hl = len(hidden_layers)
+        all_layers = [input_dim] + hidden_layers
+        for i in range(n_hl):
+            encoded_input.append(
+                Input(
+                    shape=(all_layers[i], ),
+                    name='sdae_encoded_input' + str(i)))
+            encoded.append(
+                Dense(all_layers[i + 1],
+                      activation='sigmoid')(encoded_input[i]))
+            # encoded_bn.append(BatchNormalization()(encoded[i]))
+            # decoded.append(
+            #     Dense(all_layers[i], activation='sigmoid')(encoded_bn[i]))
+            decoded.append(
+                Dense(all_layers[i], activation='sigmoid')(encoded[i]))
+            autoencoder.append(
+                Model(inputs=encoded_input[i], outputs=decoded[i]))
+            # encoder.append(
+            #     Model(inputs=encoded_input[i], outputs=encoded_bn[i]))
+            encoder.append(Model(inputs=encoded_input[i], outputs=encoded[i]))
+            autoencoder[i].compile(optimizer=optimizer, loss=loss)
+            encoder[i].compile(optimizer=optimizer, loss=loss)
+            autoencoder[i].fit(
+                x=masking_noise(x, corruption_level),
+                y=x,
+                batch_size=batch_size,
+                epochs=epochs,
+                validation_split=validation_split,
+                shuffle=True)
+            x = encoder[i].predict(x)
 
-        autoencoder1 = Model(input=input_img, output=decoded1)
-        encoder1 = Model(input=input_img, output=encoded1_bn)
+        x = input
+        for i in range(n_hl):
+            x = encoder[i](x)
+        output = x
+        model = Model(inputs=input, outputs=output)
+        model.compile(optimizer=optimizer, loss=loss)
 
-        # Layer 2
-        encoded1_input = Input(shape=(800, ))
-        distorted_input2 = Dropout(.2)(encoded1_input)
-        encoded2 = Dense(400, activation='sigmoid')(distorted_input2)
-        encoded2_bn = BatchNormalization()(encoded2)
-        decoded2 = Dense(800, activation='sigmoid')(encoded2_bn)
+        # # set all layers (i.e., SDAE encoder) to non-trainable (weights will not be updated)
+        # # N.B. the effect of freezing seems to be negative
+        # for layer in model.layers[:]:
+        #     layer.trainable = False
 
-        autoencoder2 = Model(input=encoded1_input, output=decoded2)
-        encoder2 = Model(input=encoded1_input, output=encoded2_bn)
-
-        # Layer 3 - which we won't end up fitting in the interest of time
-        encoded2_input = Input(shape=(400, ))
-        distorted_input3 = Dropout(.3)(encoded2_input)
-        encoded3 = Dense(200, activation='sigmoid')(distorted_input3)
-        encoded3_bn = BatchNormalization()(encoded3)
-        decoded3 = Dense(400, activation='sigmoid')(encoded3_bn)
-
-        autoencoder3 = Model(input=encoded2_input, output=decoded3)
-        encoder3 = Model(input=encoded2_input, output=encoded3_bn)
-
-        # Deep Autoencoder
-        encoded1_da = Dense(800, activation='sigmoid')(input_img)
-        encoded1_da_bn = BatchNormalization()(encoded1_da)
-        encoded2_da = Dense(400, activation='sigmoid')(encoded1_da_bn)
-        encoded2_da_bn = BatchNormalization()(encoded2_da)
-        encoded3_da = Dense(200, activation='sigmoid')(encoded2_da_bn)
-        encoded3_da_bn = BatchNormalization()(encoded3_da)
-        decoded3_da = Dense(400, activation='sigmoid')(encoded3_da_bn)
-        decoded2_da = Dense(800, activation='sigmoid')(decoded3_da)
-        decoded1_da = Dense(784, activation='sigmoid')(decoded2_da)
-
-        deep_autoencoder = Model(input=input_img, output=decoded1_da)
-
-        # Not as Deep Autoencoder
-        nad_encoded1_da = Dense(800, activation='sigmoid')(input_img)
-        nad_encoded1_da_bn = BatchNormalization()(nad_encoded1_da)
-        nad_encoded2_da = Dense(400, activation='sigmoid')(nad_encoded1_da_bn)
-        nad_encoded2_da_bn = BatchNormalization()(nad_encoded2_da)
-        nad_decoded2_da = Dense(800, activation='sigmoid')(nad_encoded2_da_bn)
-        nad_decoded1_da = Dense(784, activation='sigmoid')(nad_decoded2_da)
-
-        nad_deep_autoencoder = Model(input=input_img, output=nad_decoded1_da)
-        sgd1 = SGD(lr=5, decay=0.5, momentum=.85, nesterov=True)
-        sgd2 = SGD(lr=5, decay=0.5, momentum=.85, nesterov=True)
-        sgd3 = SGD(lr=5, decay=0.5, momentum=.85, nesterov=True)
-
-        autoencoder1.compile(loss='binary_crossentropy', optimizer=sgd1)
-        autoencoder2.compile(loss='binary_crossentropy', optimizer=sgd2)
-        autoencoder3.compile(loss='binary_crossentropy', optimizer=sgd3)
-
-        encoder1.compile(loss='binary_crossentropy', optimizer=sgd1)
-        encoder2.compile(loss='binary_crossentropy', optimizer=sgd1)
-        encoder3.compile(loss='binary_crossentropy', optimizer=sgd1)
-
-        deep_autoencoder.compile(loss='binary_crossentropy', optimizer=sgd1)
-        nad_deep_autoencoder.compile(
-            loss='binary_crossentropy', optimizer=sgd1)
-
-        # model = Sequential()
-        # input_dim = input_data.shape[1]  # number of RSSs per sample
-        # model.add(
-        #     Dense(
-        #         hidden_layers[0],
-        #         input_dim=input_dim,
-        #         activation='relu',
-        #         name='sdae_hidden_1'))
-        # n_hl = 1
-        # for units in hidden_layers[1:]:
-        #     n_hl += 1
-        #     model.add(
-        #         Dense(
-        #             units, activation='relu', name='sdae_hidden_' + str(n_hl)))
-        # model.add(Dense(input_dim, activation='sigmoid', name='sdae_output'))
-        # model.compile(optimizer=optimizer, loss=loss)
-
-        # history = model.fit(
-        #     input_data,
-        #     input_data,
-        #     batch_size=batch_size,
-        #     epochs=epochs,
-        #     validation_split=validation_split,
-        #     shuffle=True)
-
-        # # remove the decoder part
-        # num_to_remove = (len(hidden_layers) + 1) // 2
-        # for i in range(num_to_remove):
-        #     model.pop()
-
-        # # # set all layers (i.e., SDAE encoder) to non-trainable (weights will not be updated)
-        # # # N.B. the effect of freezing seems to be negative
-        # # for layer in model.layers[:]:
-        # #     layer.trainable = False
-
-        # pathlib.Path(os.path.dirname(model_fname)).mkdir(
-        #     parents=True, exist_ok=True)
-        # model.save(model_fname)  # save for later use
-
-        # with open(os.path.splitext(model_fname)[0] + '.org',
-        #           'w') as output_file:
-        #     model.summary(print_fn=lambda x: output_file.write(x + '\n'))
-        #     output_file.write(
-        #         "Training loss: %.4e\n" % history.history['loss'][-1])
-        #     output_file.write(
-        #         "Validation loss: %.4ef\n" % history.history['val_loss'][-1])
+        pathlib.Path(os.path.dirname(model_fname)).mkdir(
+            parents=True, exist_ok=True)
+        model.save(model_fname)  # save for later use
 
     return model
 
@@ -184,29 +139,8 @@ def sdae(input_data=None,
 if __name__ == "__main__":
     ### import basic modules and a model to test
     os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-    import platform
-    if platform.system() == 'Windows':
-        data_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-        )
-        models_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-        )
-        utils_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-        )
-    else:
-        data_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-        )
-        models_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-        )
-        utils_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-        )
     import sys
-    sys.path.insert(0, utils_path)
+    sys.path.insert(0, '../utils')
     from ujiindoorloc import UJIIndoorLoc
     ### import other modules; keras and its backend will be loaded later
     import argparse
@@ -234,8 +168,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-B",
         "--batch_size",
-        help="batch size; default is 10",
-        default=10,
+        help="batch size; default is 32",
+        default=32,
         type=int)
     parser.add_argument(
         "-E",
@@ -253,8 +187,8 @@ if __name__ == "__main__":
         "-H",
         "--hidden_layers",
         help=
-        "comma-separated numbers of units in SDAE hidden layers; default is '128,32,128'",
-        default='128,32,128',
+        "comma-separated numbers of units in SDAE hidden layers; default is '128,128,128'",
+        default='128,128,128',
         type=str)
     parser.add_argument(
         "-F",
@@ -277,11 +211,11 @@ if __name__ == "__main__":
         default='nadam',
         type=str)
     parser.add_argument(
-        "-L",
-        "--loss",
-        help="loss function for training; default is 'mse'",
-        default='mse',
-        type=str)
+        "-C",
+        "--corruption_level",
+        help="corruption level of masking noise; default is 0.1",
+        default=0.1,
+        type=float)
     args = parser.parse_args()
 
     gpu_id = args.gpu_id
@@ -293,7 +227,7 @@ if __name__ == "__main__":
     frac = args.frac
     preprocessor = args.preprocessor
     optimizer = args.optimizer
-    loss = args.loss
+    corruption_level = args.corruption_level
 
     ### initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
@@ -311,28 +245,8 @@ if __name__ == "__main__":
     ### load dataset after scaling
     print("Loading UJIIndoorLoc data ...")
 
-    if preprocessor == 'standard_scaler':
-        from sklearn.preprocessing import StandardScaler
-        rss_scaler = StandardScaler()
-        utm_scaler = StandardScaler()
-    elif preprocessor == 'minmax_scaler':
-        from sklearn.preprocessing import MinMaxScaler
-        rss_scaler = MinMaxScaler()
-        utm_scaler = MinMaxScaler()
-    elif preprocessor == 'normalizer':
-        from sklearn.preprocessing import Normalizer
-        rss_scaler = Normalizer()
-        utm_scaler = Normalizer()
-    else:
-        rss_scaler = None
-        utm_scaler = None
-
     ujiindoorloc = UJIIndoorLoc(
-        data_path,
-        frac=frac,
-        rss_scaler=rss_scaler,
-        utm_scaler=utm_scaler,
-        classification_mode='hierarchical')
+        path='../data/ujiindoorloc', frac=frac, preprocessor=preprocessor)
     _, training_data, _, _ = ujiindoorloc.load_data()
 
     ### build SDAE model
@@ -343,7 +257,7 @@ if __name__ == "__main__":
         hidden_layers=hidden_layers,
         model_fname=None,
         optimizer=optimizer,
-        loss=loss,
+        corruption_level=corruption_level,
         batch_size=batch_size,
         epochs=epochs,
         validation_split=validation_split)

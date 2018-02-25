@@ -18,31 +18,11 @@
 ### import basic modules and a model to test
 import os
 os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-import platform
-if platform.system() == 'Windows':
-    data_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-    )
-    models_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    )
-    utils_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-    )
-else:
-    data_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-    )
-    models_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    )
-    utils_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-    )
 import sys
-sys.path.insert(0, utils_path)
-sys.path.insert(0, models_path)
+sys.path.insert(0, '../models')
+sys.path.insert(0, '../utils')
 from deep_autoencoder import deep_autoencoder
+from sdae import sdae
 from ujiindoorloc import UJIIndoorLoc
 ### import other modules; keras and its backend will be loaded later
 import argparse
@@ -126,6 +106,13 @@ if __name__ == "__main__":
         default=0.0,
         type=float)
     parser.add_argument(
+        "-C",
+        "--corruption_level",
+        help=
+        "corruption level of masking noise for stacked denoising autoencoder; default is 0.1",
+        default=0.1,
+        type=float)
+    parser.add_argument(
         "-N",
         "--neighbours",
         help=
@@ -141,8 +128,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dae_hidden_layers",
         help=
-        "comma-separated numbers of units in hidden layers for deep autoencoder; default is '256,128,256'",
-        default='256,128,256',
+        "comma-separated numbers of units in hidden layers for deep autoencoder; default is ''",
+        default='',
+        type=str)
+    parser.add_argument(
+        "--sdae_hidden_layers",
+        help=
+        "comma-separated numbers of units in hidden layers for stacked denoising autoencoder; default is '1024,1024,1024'",
+        default='1024,1024,1024',
         type=str)
     parser.add_argument(
         "--common_hidden_layers",
@@ -169,6 +162,7 @@ if __name__ == "__main__":
     epochs = args.epochs
     optimizer = args.optimizer
     dropout = args.dropout
+    corruption_level = args.corruption_level
     N = args.neighbours
     scaling = args.scaling
     if args.dae_hidden_layers == '':
@@ -176,6 +170,12 @@ if __name__ == "__main__":
     else:
         dae_hidden_layers = [
             int(i) for i in (args.dae_hidden_layers).split(',')
+        ]
+    if args.sdae_hidden_layers == '':
+        sdae_hidden_layers = ''
+    else:
+        sdae_hidden_layers = [
+            int(i) for i in (args.sdae_hidden_layers).split(',')
         ]
     if args.common_hidden_layers == '':
         common_hidden_layers = ''
@@ -201,27 +201,10 @@ if __name__ == "__main__":
     ### load dataset after scaling
     print("\nPart 1: loading UJIIndoorLoc data ...")
 
-    if preprocessor == 'standard_scaler':
-        from sklearn.preprocessing import StandardScaler
-        rss_scaler = StandardScaler()
-        utm_scaler = StandardScaler()
-    elif preprocessor == 'minmax_scaler':
-        from sklearn.preprocessing import MinMaxScaler
-        rss_scaler = MinMaxScaler()
-        utm_scaler = MinMaxScaler()
-    elif preprocessor == 'normalizer':
-        from sklearn.preprocessing import Normalizer
-        rss_scaler = Normalizer()
-        utm_scaler = Normalizer()
-    else:
-        rss_scaler = None
-        utm_scaler = None
-
     ujiindoorloc = UJIIndoorLoc(
-        data_path,
+        '../data/ujiindoorloc',
         frac=frac,
-        rss_scaler=rss_scaler,
-        utm_scaler=utm_scaler,
+        preprocessor=preprocessor,
         classification_mode='hierarchical')
     training_df, training_data, testing_df, testing_data = ujiindoorloc.load_data(
     )
@@ -232,20 +215,34 @@ if __name__ == "__main__":
     )
     rss = training_data.rss_scaled
     utm = training_data.utm_scaled
+    utm_scaler = training_data.utm_scaler  # for inverse transform
     labels = training_data.labels
     input = Input(shape=(rss.shape[1], ), name='input')  # common input
     # tensorboard = TensorBoard(
     #     log_dir="logs/{}".format(time()), write_graph=True)
 
-    # (optional) build deep autoencoder
+    # (optional) build deep autoencoder or stacked denoising autoencoder
     if dae_hidden_layers != '':
         print("\nPart 2.0: buidling a DAE model ...")
         model = deep_autoencoder(
-            rss,
+            input_data=rss,
             preprocessor=preprocessor,
             hidden_layers=dae_hidden_layers,
             model_fname=None,
             optimizer=optimizer,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_split=validation_split)
+        x = model(input)
+    elif sdae_hidden_layers != '':
+        print("\nPart 2.0: buidling an SDAE model ...")
+        model = sdae(
+            input_data=rss,
+            preprocessor=preprocessor,
+            hidden_layers=sdae_hidden_layers,
+            model_fname=None,
+            optimizer=optimizer,
+            corruption_level=corruption_level,
             batch_size=batch_size,
             epochs=epochs,
             validation_split=validation_split)
@@ -257,11 +254,12 @@ if __name__ == "__main__":
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(dropout)(x)
-    for units in common_hidden_layers:
-        x = Dense(units)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Dropout(dropout)(x)
+    if common_hidden_layers != '':
+        for units in common_hidden_layers:
+            x = Dense(units)(x)
+            x = BatchNormalization()(x)
+            x = Activation('relu')(x)
+            x = Dropout(dropout)(x)
     common_hl_output = x
 
     # building classification output
@@ -614,6 +612,14 @@ if __name__ == "__main__":
         else:
             output_file.write("%d" % dae_hidden_layers[0])
             for units in dae_hidden_layers[1:]:
+                output_file.write("-%d" % units)
+            output_file.write("\n")
+        output_file.write("  - Stacked denoising autoencoder hidden layers: ")
+        if sdae_hidden_layers == '':
+            output_file.write("N/A\n")
+        else:
+            output_file.write("%d" % sdae_hidden_layers[0])
+            for units in sdae_hidden_layers[1:]:
                 output_file.write("-%d" % units)
             output_file.write("\n")
         output_file.write("  - Common hidden layers: ")

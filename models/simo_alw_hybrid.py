@@ -64,7 +64,7 @@ session_conf = tf.ConfigProto(
     intra_op_parallelism_threads=1, inter_op_parallelism_threads=1
 )  # force TF to use single thread for reproducibility
 from keras import backend as K
-# from keras.callbacks import TensorBoard
+from keras.callbacks import Callback, TensorBoard
 from keras.layers import Activation, Dense, Dropout, Input
 from keras.layers.normalization import BatchNormalization
 from keras.metrics import categorical_accuracy
@@ -80,7 +80,7 @@ class AdaptiveLossWeights(Callback):
         self.coordinates_weight = coordinates_weight
 
     def on_epoch_end(self, epoch, logs={}):
-        # TODO: adjust weights based on losses
+        # TODO: adjust weights based on losses and so on
         current_score = logs.get('val_acc')
         if current_score > self.best_score:
             self.best_score = current_score
