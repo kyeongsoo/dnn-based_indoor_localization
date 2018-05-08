@@ -7,7 +7,7 @@
 #
 # @brief A scalable indoor localization system (up to reference points) based on
 #        Wi-Fi fingerprinting using a multi-class classification of building,
-#        floor, ad location and regression of location (reference point)
+#        floor, and location and regression of location (reference point)
 #        coordiates with a single-input and multi-output (SIMO) deep neural
 #        network (DNN) model trained with adaptive loss weights.
 #
