@@ -9,7 +9,7 @@ from __future__ import print_function
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Dense, Dropout, Flatten, Reshape
 from keras.layers import Conv2D, MaxPooling2D
 from keras import backend as K
 import sys
@@ -59,13 +59,9 @@ samples_original = x_train[digit_idx]
 num_pixels = img_rows*img_cols
 permute_idx = np.random.permutation(num_pixels)  # random permutation for 28*28 images
 # permute_idx = np.roll(np.arange(num_pixels), 1)  # roll the elements of 1-dim array for 28*28 images
-# for i in range(len(x_train)):
-#     x_train[i] = ((np.ndarray.flatten(x_train[i]))[permute_idx]).reshape((img_rows, img_cols, 1))
 tmp = x_train.reshape(len(x_train), num_pixels)
 tmp = tmp[:, permute_idx]
 x_train = tmp.reshape(len(x_train), img_rows, img_cols, 1)
-# for i in range(len(x_test)):
-#     x_test[i] = ((np.ndarray.flatten(x_test[i]))[permute_idx]).reshape((img_rows, img_cols, 1))
 tmp = x_test.reshape(len(x_test), num_pixels)
 tmp = tmp[:, permute_idx]
 x_test = tmp.reshape(len(x_test), img_rows, img_cols, 1)
@@ -78,6 +74,17 @@ y_train = keras.utils.to_categorical(y_train, num_classes)
 y_test = keras.utils.to_categorical(y_test, num_classes)
 
 model = Sequential()
+
+# add dense layers (later SAE) for depermutation
+# dropout = 0.1
+model.add(Reshape((-1, num_pixels), input_shape=input_shape))
+# model.add(Dropout(dropout))
+# model.add(Dense(num_pixels, activation='relu'))
+model.add(Dense(num_pixels, activation='relu'))
+# model.add(Dropout(dropout))
+# model.add(Dense(num_pixels, activation='relu'))
+model.add(Reshape(input_shape))
+          
 model.add(Conv2D(32, kernel_size=(3, 3),
                  activation='relu',
                  input_shape=input_shape))

@@ -5,7 +5,7 @@
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2018-02-14
 #
-# @brief A parser and preprocessor for the UJIIndoorLoc WLAN fingerprinting
+# @brief A parser and preprocessor for the UJIIndoorLoc Wi-Fi fingerprinting
 #        database.
 #
 # @remarks For details of the UJIIndoorLoc database, please refer [1].

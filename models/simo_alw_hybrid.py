@@ -9,7 +9,7 @@
 #        Wi-Fi fingerprinting using a multi-class classification of building,
 #        floor, and location and regression of location (reference point)
 #        coordiates with a single-input and multi-output (SIMO) deep neural
-#        network (DNN) model trained with adaptive loss weights.
+#        network (DNN) model trained with adaptive loss weights (ALWs).
 #
 # @remarks The results will be published in a paper submitted to the <a
 #          href="http://www.sciencedirect.com/science/journal/08936080">Elsevier
@@ -31,7 +31,7 @@ if platform.system() == 'Windows':
     )
 else:
     data_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/data/ujiindoorloc'
     )
     models_path = os.path.expanduser(
         '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
