@@ -30,25 +30,27 @@ from collections import namedtuple
 class UJIIndoorLoc(object):
     def __init__(self,
                  path='.',
+                 cache=False,
                  frac=1.0,
                  preprocessor='standard_scaler',
                  classification_mode='hierarchical',
                  lack_of_ap=-110):
         self.training_fname = path + '/' + 'trainingData.csv'  # RSS=100 for lack of AP
         self.testing_fname = path + '/' + 'validationData.csv'  # validation data as testing data
+        self.cache = cache
         self.frac = frac
         if preprocessor == 'standard_scaler':
             from sklearn.preprocessing import StandardScaler
             self.rss_scaler = StandardScaler()
-            self.utm_scaler = StandardScaler()
+            self.coord_scaler = StandardScaler()
         elif preprocessor == 'minmax_scaler':
             from sklearn.preprocessing import MinMaxScaler
             self.rss_scaler = MinMaxScaler()
-            self.utm_scaler = MinMaxScaler()
+            self.coord_scaler = MinMaxScaler()
         elif preprocessor == 'normalizer':
             from sklearn.preprocessing import Normalizer
             self.rss_scaler = Normalizer()
-            self.utm_scaler = Normalizer()
+            self.coord_scaler = Normalizer()
         else:
             print("{0:s} preprocessor is not supported.".format(preprocessor))
             sys.exit()
@@ -59,7 +61,7 @@ class UJIIndoorLoc(object):
             preprocessor)  # cloudpickle file name for saved objects
 
     def load_data(self):
-        if os.path.isfile(self.saved_fname) and (os.path.getmtime(
+        if self.cache == True and os.path.isfile(self.saved_fname) and (os.path.getmtime(
                 self.saved_fname) > os.path.getmtime(__file__)):
             with open(self.saved_fname, 'rb') as input_file:
                 self.training_df = cloudpickle.load(input_file)
@@ -99,25 +101,25 @@ class UJIIndoorLoc(object):
                 testing_rss_scaled = testing_rss
 
             # process UTM coordinates
-            training_utm_x = np.asarray(
+            training_coord_x = np.asarray(
                 self.training_df['LONGITUDE'], dtype=np.float)
-            training_utm_y = np.asarray(
+            training_coord_y = np.asarray(
                 self.training_df['LATITUDE'], dtype=np.float)
-            training_utm = np.column_stack((training_utm_x, training_utm_y))
-            num_coords = training_utm.shape[1]
-            testing_utm_x = np.asarray(
+            training_coord = np.column_stack((training_coord_x, training_coord_y))
+            num_coords = training_coord.shape[1]
+            testing_coord_x = np.asarray(
                 self.testing_df['LONGITUDE'], dtype=np.float)
-            testing_utm_y = np.asarray(
+            testing_coord_y = np.asarray(
                 self.testing_df['LATITUDE'], dtype=np.float)
-            testing_utm = np.column_stack((testing_utm_x, testing_utm_y))
-            if self.utm_scaler != None:
-                training_utm_scaled = self.utm_scaler.fit_transform(
-                    training_utm)
-                testing_utm_scaled = self.utm_scaler.transform(
-                    testing_utm)  # scaled version
+            testing_coord = np.column_stack((testing_coord_x, testing_coord_y))
+            if self.coord_scaler != None:
+                training_coord_scaled = self.coord_scaler.fit_transform(
+                    training_coord)
+                testing_coord_scaled = self.coord_scaler.transform(
+                    testing_coord)  # scaled version
             else:
-                training_utm_scaled = training_utm
-                testing_utm_scaled = testing_utm
+                training_coord_scaled = training_coord
+                testing_coord_scaled = testing_coord
 
             # map locations (reference points) to sequential IDs per building &
             # floor before building labels
@@ -127,7 +129,7 @@ class UJIIndoorLoc(object):
                                                         axis=1) # add a new column
             blds = np.unique(self.training_df[['BUILDINGID']])
             flrs = np.unique(self.training_df[['FLOOR']])
-            training_utm_avg = {}
+            training_coord_avg = {}
 
             for bld in blds:
                 n_rfps = 0
@@ -149,7 +151,7 @@ class UJIIndoorLoc(object):
                         ]].drop_duplicates(subset='REFPOINT')
                         x = np.mean(df.loc[cond, 'LONGITUDE'])
                         y = np.mean(df.loc[cond, 'LATITUDE'])
-                        training_utm_avg[str(bld) + '-' + str(flr)] = np.array(
+                        training_coord_avg[str(bld) + '-' + str(flr)] = np.array(
                             (x, y))
                         n = len(df)
                         sum_x += n * x
@@ -157,7 +159,7 @@ class UJIIndoorLoc(object):
                         n_rfps += n
 
                 # calculate the average coordinates of each building
-                training_utm_avg[str(bld)] = np.array((sum_x / n_rfps,
+                training_coord_avg[str(bld)] = np.array((sum_x / n_rfps,
                                                        sum_y / n_rfps))
 
             # build labels for sequential multi-class classification of a building, a floor, and a location (reference point)
@@ -188,8 +190,8 @@ class UJIIndoorLoc(object):
 
             if self.classification_mode == 'hierarchical':
                 TrainingData = namedtuple('TrainingData', [
-                    'rss', 'rss_scaled', 'rss_scaler', 'utm', 'utm_avg',
-                    'utm_scaled', 'utm_scaler', 'labels'
+                    'rss', 'rss_scaled', 'rss_scaler', 'coord', 'coord_avg',
+                    'coord_scaled', 'coord_scaler', 'labels'
                 ])
                 TrainingLabels = namedtuple('TrainingLabels',
                                             ['building', 'floor', 'location'])
@@ -201,15 +203,15 @@ class UJIIndoorLoc(object):
                     rss=training_rss,
                     rss_scaled=training_rss_scaled,
                     rss_scaler=self.rss_scaler,
-                    utm=training_utm,
-                    utm_avg=training_utm_avg,
-                    utm_scaled=training_utm_scaled,
-                    utm_scaler=self.utm_scaler,
+                    coord=training_coord,
+                    coord_avg=training_coord_avg,
+                    coord_scaled=training_coord_scaled,
+                    coord_scaler=self.coord_scaler,
                     labels=training_labels)
 
                 TestingData = namedtuple(
                     'TestingData',
-                    ['rss', 'rss_scaled', 'utm', 'utm_scaled', 'labels'])
+                    ['rss', 'rss_scaled', 'coord', 'coord_scaled', 'labels'])
                 TestingLabels = namedtuple('TestingLabels',
                                            ['building', 'floor'])
                 testing_labels = TestingLabels(
@@ -217,20 +219,21 @@ class UJIIndoorLoc(object):
                 testing_data = TestingData(
                     rss=testing_rss,
                     rss_scaled=testing_rss_scaled,
-                    utm=testing_utm,
-                    utm_scaled=testing_utm_scaled,
+                    coord=testing_coord,
+                    coord_scaled=testing_coord_scaled,
                     labels=testing_labels)
 
             self.training_data = training_data
             self.testing_data = testing_data
 
-            pathlib.Path(os.path.dirname(self.saved_fname)).mkdir(
-                parents=True, exist_ok=True)
-            with open(self.saved_fname, 'wb') as output_file:
-                cloudpickle.dump(self.training_df, output_file)
-                cloudpickle.dump(self.training_data, output_file)
-                cloudpickle.dump(self.testing_df, output_file)
-                cloudpickle.dump(self.testing_data, output_file)
+            if self.cache == True:
+                pathlib.Path(os.path.dirname(self.saved_fname)).mkdir(
+                    parents=True, exist_ok=True)
+                with open(self.saved_fname, 'wb') as output_file:
+                    cloudpickle.dump(self.training_df, output_file)
+                    cloudpickle.dump(self.training_data, output_file)
+                    cloudpickle.dump(self.testing_df, output_file)
+                    cloudpickle.dump(self.testing_data, output_file)
 
         return self.training_df, self.training_data, self.testing_df, self.testing_data
 
@@ -238,6 +241,13 @@ class UJIIndoorLoc(object):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-C",
+        "--cache",
+        help=
+        "whether to load data from/save them to a cache; default is False",
+        default=False,
+        type=bool)
     parser.add_argument(
         "-F",
         "--frac",
@@ -259,6 +269,7 @@ if __name__ == "__main__":
         default=-110,
         type=int)
     args = parser.parse_args()
+    cache = args.cache
     frac = args.frac
     preprocessor = args.preprocessor
     lack_of_ap = args.lack_of_ap
@@ -268,6 +279,7 @@ if __name__ == "__main__":
     print("Loading UJIIndoorLoc data ...")
     ujiindoorloc = UJIIndoorLoc(
         path='../data/ujiindoorloc',
+        cache=cache,
         frac=frac,
         preprocessor=preprocessor,
         classification_mode='hierarchical',
