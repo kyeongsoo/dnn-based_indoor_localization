@@ -32,6 +32,7 @@ def masking_noise(x, corruption_level):
 def sdae(input_data=None,
          preprocessor='standard_scaler',
          hidden_layers=[],
+         cache=False,
          model_fname=None,
          optimizer='nadam',
          corruption_level=0.1,
@@ -44,6 +45,7 @@ def sdae(input_data=None,
     input_data -- two-dimensional array of RSSs
     preprocessor -- preprocessor used to scale/normalize the original input data (information only)
     hidden_layers -- list of numbers of units in SDAE hidden layers
+    cache -- whether to load a trained model from/save it to a cache
     model_fname -- full path name for SDAE model load & save
     optimizer -- optimizer for training
     corruption_level -- corruption level of masking noise
@@ -60,17 +62,18 @@ def sdae(input_data=None,
         print("{0:s} preprocessor is not supported.".format(preprocessor))
         sys.exit()
 
-    if model_fname == None:
-        model_fname = './saved/sdae_H' + '-'.join(map(
-            str, hidden_layers)) + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(
-                batch_size, epochs, loss, preprocessor) + '.hdf5'
+    if cache == True:
+        if model_fname == None:
+            model_fname = './saved/sdae_H' + '-'.join(map(
+                str, hidden_layers)) + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(
+                    batch_size, epochs, loss, preprocessor) + '.hdf5'
 
-    if os.path.isfile(model_fname) and (os.path.getmtime(model_fname) >
-                                        os.path.getmtime(__file__)):
-        model = load_model(model_fname)
-        # # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
-        # model = load_model(model_fname, compile=False)
-        # model.compile(optimizer=SDAE_OPTIMIZER, loss=SDAE_LOSS)
+        if os.path.isfile(model_fname) and (os.path.getmtime(model_fname) >
+                                            os.path.getmtime(__file__)):
+            model = load_model(model_fname)
+            # # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
+            # model = load_model(model_fname, compile=False)
+            # model.compile(optimizer=SDAE_OPTIMIZER, loss=SDAE_LOSS)
     else:
         # each layer is named explicitly to avoid any conflicts in
         # model.compile() by models using SDAE
@@ -129,9 +132,18 @@ def sdae(input_data=None,
         # for layer in model.layers[:]:
         #     layer.trainable = False
 
-        pathlib.Path(os.path.dirname(model_fname)).mkdir(
-            parents=True, exist_ok=True)
-        model.save(model_fname)  # save for later use
+        if cache == True:
+            pathlib.Path(os.path.dirname(model_fname)).mkdir(
+                parents=True, exist_ok=True)
+            model.save(model_fname)  # save for later use
+
+            with open(os.path.splitext(model_fname)[0] + '.org',
+                      'w') as output_file:
+                model.summary(print_fn=lambda x: output_file.write(x + '\n'))
+                output_file.write(
+                    "Training loss: %.4e\n" % history.history['loss'][-1])
+                output_file.write(
+                    "Validation loss: %.4ef\n" % history.history['val_loss'][-1])            
 
     return model
 
@@ -177,6 +189,13 @@ if __name__ == "__main__":
         help="number of epochs; default is 20",
         default=20,
         type=int)
+    parser.add_argument(
+        "-C",
+        "--cache",
+        help=
+        "whether to load a trained model from/save it to a cache; default is False",
+        default=False,
+        type=bool)
     parser.add_argument(
         "--validation_split",
         help=
@@ -224,6 +243,7 @@ if __name__ == "__main__":
     epochs = args.epochs
     validation_split = args.validation_split
     hidden_layers = [int(i) for i in (args.hidden_layers).split(',')]
+    cache = args.cache
     frac = args.frac
     preprocessor = args.preprocessor
     optimizer = args.optimizer
@@ -255,6 +275,7 @@ if __name__ == "__main__":
         training_data.rss_scaled,
         preprocessor=preprocessor,
         hidden_layers=hidden_layers,
+        cache=cache,
         model_fname=None,
         optimizer=optimizer,
         corruption_level=corruption_level,

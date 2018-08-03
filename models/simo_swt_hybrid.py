@@ -23,7 +23,6 @@ sys.path.insert(0, '../models')
 sys.path.insert(0, '../utils')
 from deep_autoencoder import deep_autoencoder
 from sdae import sdae
-from ujiindoorloc import UJIIndoorLoc
 ### import other modules; keras and its backend will be loaded later
 import argparse
 import datetime
@@ -60,7 +59,16 @@ if __name__ == "__main__":
         default=0,
         type=int)
     parser.add_argument(
-        "-R", "--random_seed", help="random seed", default=0, type=int)
+        "-R",
+        "--random_seed",
+        help="random seed",
+        default=0,
+        type=int)
+    parser.add_argument(
+        "--dataset",
+        help="a data set for training, validation, and testing; choices are 'uji' (default) and 'tut'",
+        default='uji',
+        type=str)
     parser.add_argument(
         "-F",
         "--frac",
@@ -102,8 +110,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-D",
         "--dropout",
-        help="dropout rate before and after hidden layers; default is 0.0",
-        default=0.0,
+        help="dropout rate before and after hidden layers; default is 0.2",
+        default=0.2,
         type=float)
     parser.add_argument(
         "-C",
@@ -155,6 +163,7 @@ if __name__ == "__main__":
     # set variables using command-line arguments
     gpu_id = args.gpu_id
     random_seed = args.random_seed
+    dataset = args.dataset
     frac = args.frac
     validation_split = args.validation_split
     preprocessor = args.preprocessor
@@ -198,24 +207,38 @@ if __name__ == "__main__":
         config=session_conf)  # for reproducibility
     K.set_session(sess)
 
-    ### load dataset after scaling
-    print("\nPart 1: loading UJIIndoorLoc data ...")
+    ### load datasets after scaling
+    print("\nPart 1: loading data ...")
 
-    ujiindoorloc = UJIIndoorLoc(
-        '../data/ujiindoorloc',
-        frac=frac,
-        preprocessor=preprocessor,
-        classification_mode='hierarchical')
-    training_df, training_data, testing_df, testing_data = ujiindoorloc.load_data(
-    )
-
+    if dataset == 'uji':
+        from ujiindoorloc import UJIIndoorLoc
+        ujiindoorloc = UJIIndoorLoc(
+            '../data/ujiindoorloc',
+            frac=frac,
+            preprocessor=preprocessor,
+            classification_mode='hierarchical')
+        training_df, training_data, testing_df, testing_data = ujiindoorloc.load_data(
+        )
+    elif dataset == 'tut':
+        from tut import TUT
+        tut = TUT(
+            '../data/tut',
+            frac=frac,
+            preprocessor=preprocessor,
+            classification_mode='hierarchical')
+        training_df, training_data, testing_df, testing_data = tut.load_data(
+        )
+    else:
+        print("'{0}' is not a supported data set.".format(dataset))
+        sys.exit(0)
+        
     ### build and do stage-wise training of a SIMO model
     print(
-        "\nPart 2: buidling and stage-wise training a SIMO model for hybrid classification and regression ..."
+        "\nPart 2: building and stage-wise training a SIMO model for hybrid classification and regression ..."
     )
     rss = training_data.rss_scaled
-    utm = training_data.utm_scaled
-    utm_scaler = training_data.utm_scaler  # for inverse transform
+    coord = training_data.coord_scaled
+    coord_scaler = training_data.coord_scaler  # for inverse transform
     labels = training_data.labels
     input = Input(shape=(rss.shape[1], ), name='input')  # common input
     # tensorboard = TensorBoard(
@@ -223,7 +246,7 @@ if __name__ == "__main__":
 
     # (optional) build deep autoencoder or stacked denoising autoencoder
     if dae_hidden_layers != '':
-        print("\nPart 2.0: buidling a DAE model ...")
+        print("\nPart 2.0: building a DAE model ...")
         model = deep_autoencoder(
             input_data=rss,
             preprocessor=preprocessor,
@@ -235,7 +258,7 @@ if __name__ == "__main__":
             validation_split=validation_split)
         x = model(input)
     elif sdae_hidden_layers != '':
-        print("\nPart 2.0: buidling an SDAE model ...")
+        print("\nPart 2.0: building an SDAE model ...")
         model = sdae(
             input_data=rss,
             preprocessor=preprocessor,
@@ -281,7 +304,7 @@ if __name__ == "__main__":
         'softmax', name='location_output')(x)  # no dropout for an output layer
 
     # coordinates regression output
-    x = Dense(utm.shape[1], kernel_initializer='normal')(common_hl_output)
+    x = Dense(coord.shape[1], kernel_initializer='normal')(common_hl_output)
     x = BatchNormalization()(x)
     coordinates_output = Activation(
         'linear', name='coordinates_output')(x)  # 'linear' activation
@@ -293,11 +316,18 @@ if __name__ == "__main__":
             building_output, floor_output, location_output, coordinates_output
         ])
 
-    print("\nPart 2.1: stage-wise training with buidling information ...")
+    print("\nPart 2.1: stage-wise training with building information ...")
+
+    # to handle single-building datasets (e.g., TUT)
+    if labels.building.shape[1] > 1:
+        building_loss = 'categorical_crossentropy'
+    else:
+        building_loss = 'sparse_categorical_crossentropy'
+        
     model.compile(
         optimizer=optimizer,
         loss=[
-            'categorical_crossentropy', 'categorical_crossentropy',
+            building_loss, 'categorical_crossentropy',
             'categorical_crossentropy', 'mean_squared_error'
         ],
         loss_weights={
@@ -320,7 +350,7 @@ if __name__ == "__main__":
             'building_output': labels.building,
             'floor_output': labels.floor,
             'location_output': labels.location,
-            'coordinates_output': utm
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -340,11 +370,11 @@ if __name__ == "__main__":
           elapsedTime)
 
     print(
-        "\nPart 2.2: stage-wise training with buidling-floor information ...")
+        "\nPart 2.2: stage-wise training with building-floor information ...")
     model.compile(
         optimizer=optimizer,
         loss=[
-            'categorical_crossentropy', 'categorical_crossentropy',
+            building_loss, 'categorical_crossentropy',
             'categorical_crossentropy', 'mean_squared_error'
         ],
         loss_weights={
@@ -367,7 +397,7 @@ if __name__ == "__main__":
             'building_output': labels.building,
             'floor_output': labels.floor,
             'location_output': labels.location,
-            'coordinates_output': utm
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -388,12 +418,12 @@ if __name__ == "__main__":
         % elapsedTime)
 
     print(
-        "\nPart 2.3: stage-wise training with buidling-floor-location information ..."
+        "\nPart 2.3: stage-wise training with building-floor-location information ..."
     )
     model.compile(
         optimizer=optimizer,
         loss=[
-            'categorical_crossentropy', 'categorical_crossentropy',
+            building_loss, 'categorical_crossentropy',
             'categorical_crossentropy', 'mean_squared_error'
         ],
         loss_weights={
@@ -416,7 +446,7 @@ if __name__ == "__main__":
             'building_output': labels.building,
             'floor_output': labels.floor,
             'location_output': labels.location,
-            'coordinates_output': utm
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -437,12 +467,12 @@ if __name__ == "__main__":
         % elapsedTime)
 
     print(
-        "\nPart 2.4: stage-wise training with buidling-floor-location-coordinates information ..."
+        "\nPart 2.4: stage-wise training with building-floor-location-coordinates information ..."
     )
     model.compile(
         optimizer=optimizer,
         loss=[
-            'categorical_crossentropy', 'categorical_crossentropy',
+            building_loss, 'categorical_crossentropy',
             'categorical_crossentropy', 'mean_squared_error'
         ],
         loss_weights={
@@ -465,7 +495,7 @@ if __name__ == "__main__":
             'building_output': labels.building,
             'floor_output': labels.floor,
             'location_output': labels.location,
-            'coordinates_output': utm
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -491,7 +521,13 @@ if __name__ == "__main__":
     labels = testing_data.labels
     blds = labels.building
     flrs = labels.floor
-    utm = testing_data.utm  # original UTM coordinates
+    coord = testing_data.coord  # original coordinates
+    if dataset == 'uji':
+        x_col_name = 'LONGITUDE'
+        y_col_name = 'LATITUDE'
+    else:                       # including 'tut'
+        x_col_name = 'X'
+        y_col_name = 'Y'
 
     # calculate the classification accuracies and localization errors
     preds = model.predict(rss, batch_size=batch_size)
@@ -516,9 +552,9 @@ if __name__ == "__main__":
         (training_data.labels.building, training_data.labels.floor,
          training_data.labels.location),
         axis=1)
-    training_utm_avg = training_data.utm_avg
-    utm_est = np.zeros((n_samples, 2))
-    utm_est_weighted = np.zeros((n_samples, 2))
+    training_coord_avg = training_data.coord_avg
+    coord_est = np.zeros((n_samples, 2))
+    coord_est_weighted = np.zeros((n_samples, 2))
     for i in range(n_samples):
         xs = []
         ys = []
@@ -532,24 +568,24 @@ if __name__ == "__main__":
                      loc))).all(axis=1))  # tuple of row indexes
                 if rows[0].size > 0:
                     xs.append(training_df.loc[training_df.index[rows[0][0]],
-                                              'LONGITUDE'])
+                                              x_col_name])
                     ys.append(training_df.loc[training_df.index[rows[0][0]],
-                                              'LATITUDE'])
+                                              y_col_name])
                     ws.append(locs[i][j])
         if len(xs) > 0:
-            utm_est[i] = np.array((xs, ys)).mean(axis=1)
-            utm_est_weighted[i] = np.array((np.average(xs, weights=ws),
+            coord_est[i] = np.array((xs, ys)).mean(axis=1)
+            coord_est_weighted[i] = np.array((np.average(xs, weights=ws),
                                             np.average(ys, weights=ws)))
         else:
             if rows[0].size > 0:
                 key = str(np.argmax(blds[i])) + '-' + str(np.argmax(flrs[i]))
             else:
                 key = str(np.argmax(blds[i]))
-            utm_est[i] = utm_est_weighted[i] = training_utm_avg[key]
+            coord_est[i] = coord_est_weighted[i] = training_coord_avg[key]
 
     # calculate localization errors per EvAAL/IPIN 2015 competition
-    dist = norm(utm - utm_est, axis=1)  # Euclidean distance
-    dist_weighted = norm(utm - utm_est_weighted, axis=1)
+    dist = norm(coord - coord_est, axis=1)  # Euclidean distance
+    dist_weighted = norm(coord - coord_est_weighted, axis=1)
     flr_diff = np.absolute(
         np.argmax(flrs, axis=1) - np.argmax(preds[1], axis=1))
     error = dist + 50 * (
@@ -562,12 +598,12 @@ if __name__ == "__main__":
     median_error_weighted = np.median(error_weighted)
 
     # calculate positioning error based on coordinates regression
-    utm_preds = utm_scaler.inverse_transform(
+    coord_preds = coord_scaler.inverse_transform(
         preds[3])  # inverse-scaled version
-    location_mse = ((utm - utm_preds)**2).mean()
+    location_mse = ((coord - coord_preds)**2).mean()
 
     # calculate localization errors per EvAAL/IPIN 2015 competition
-    dist = norm(utm - utm_preds, axis=1)  # Euclidean distance
+    dist = norm(coord - coord_preds, axis=1)  # Euclidean distance
     error = dist + 50 * (
         1 - bld_results) + 4 * flr_diff  # individual error [m]
     mean_error_regression = error.mean()
@@ -575,7 +611,7 @@ if __name__ == "__main__":
 
     ### print out final results
     base_dir = '../results/test/' + (os.path.splitext(
-        os.path.basename(__file__))[0]).replace('test_', '')
+        os.path.basename(__file__))[0]).replace('test_', '') + '/' + dataset
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
     # base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
     #     epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))
@@ -630,6 +666,9 @@ if __name__ == "__main__":
             for units in common_hidden_layers[1:]:
                 output_file.write("-%d" % units)
             output_file.write("\n")
+        output_file.write("\n")
+        output_file.write("* Model Summary\n")
+        model.summary(print_fn=lambda x: output_file.write(x + '\n'))
         output_file.write("\n")
         output_file.write("* Performance\n")
         output_file.write(" - Building hit rate [%%]: %.2f\n" %

@@ -122,8 +122,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-D",
         "--dropout",
-        help="dropout rate before and after hidden layers; default is 0.0",
-        default=0.0,
+        help="dropout rate before and after hidden layers; default is 0.2",
+        default=0.2,
         type=float)
     parser.add_argument(
         "-N",
