@@ -222,12 +222,26 @@ if __name__ == "__main__":
     elif dataset == 'tut':
         from tut import TUT
         tut = TUT(
-            '../data/tut',
+            path='../data/tut',
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical')
-        training_df, training_data, testing_df, testing_data = tut.load_data(
-        )
+        training_df = tut.training_df
+        training_data = tut.training_data
+        testing_df = tut.testing_df
+        testing_data = tut.testing_data
+    elif dataset == 'tut2':
+        from tut import TUT2
+        tut2 = TUT2(
+            path='../data/tut',
+            frac=frac,
+            preprocessor=preprocessor,
+            classification_mode='hierarchical',
+            testing_split=0.2)
+        training_df = tut2.training_df
+        training_data = tut2.training_data
+        testing_df = tut2.testing_df
+        testing_data = tut2.testing_data
     else:
         print("'{0}' is not a supported data set.".format(dataset))
         sys.exit(0)

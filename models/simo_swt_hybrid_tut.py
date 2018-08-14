@@ -88,6 +88,11 @@ if __name__ == "__main__":
         default='standard_scaler',
         type=str)
     parser.add_argument(
+        "--grid_size",
+        help="size of a grid [m]",
+        default=0,
+        type=float)
+    parser.add_argument(
         "-B",
         "--batch_size",
         help="batch size; default is 32",
@@ -162,6 +167,7 @@ if __name__ == "__main__":
     gpu_id = args.gpu_id
     random_seed = args.random_seed
     dataset = args.dataset
+    grid_size = args.grid_size
     frac = args.frac
     validation_split = args.validation_split
     preprocessor = args.preprocessor
@@ -213,7 +219,8 @@ if __name__ == "__main__":
             path='../data/tut',
             frac=frac,
             preprocessor=preprocessor,
-            classification_mode='hierarchical')
+            classification_mode='hierarchical',
+            grid_size=grid_size)
         flr_height = tut.floor_height
         training_df = tut.training_df
         training_data = tut.training_data
@@ -226,6 +233,7 @@ if __name__ == "__main__":
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
+            grid_size=grid_size,
             testing_split=0.2)
         flr_height = tut2.floor_height
         training_df = tut2.training_df
@@ -298,12 +306,6 @@ if __name__ == "__main__":
     x = BatchNormalization()(x)
     location_output = Activation(
         'softmax', name='location_output')(x)  # no dropout for an output layer
-
-    # # coordinates regression output
-    # x = Dense(coord.shape[1], kernel_initializer='normal')(common_hl_output)
-    # x = BatchNormalization()(x)
-    # coordinates_output = Activation(
-    #     'linear', name='coordinates_output')(x)  # 'linear' activation
 
     # build model
     model = Model(
@@ -390,45 +392,6 @@ if __name__ == "__main__":
         "Stage-wise training with floor-location information completed in %e s."
         % elapsedTime)
 
-    # print(
-    #     "\nPart 2.3: stage-wise training with floor-location-coordinates information ..."
-    # )
-    # model.compile(
-    #     optimizer=optimizer,
-    #     loss=[
-    #         'categorical_crossentropy',
-    #         'categorical_crossentropy',
-    #         'mean_squared_error'
-    #     ],
-    #     loss_weights={
-    #         'floor_output': 1.0,
-    #         'location_output': 1.0,
-    #         'coordinates_output': 1.0
-    #     },
-    #     metrics={
-    #         'floor_output': 'accuracy',
-    #         'location_output': 'accuracy',
-    #         'coordinates_output': 'mean_squared_error'
-    #     })
-
-    # startTime = timer()
-    # bflc_history = model.fit(
-    #     x={'input': rss},
-    #     y={
-    #         'floor_output': labels.floor,
-    #         'location_output': labels.location,
-    #         'coordinates_output': coord
-    #     },
-    #     batch_size=batch_size,
-    #     epochs=epochs,
-    #     verbose=verbose,
-    #     validation_split=validation_split,
-    #     shuffle=True)
-    # elapsedTime = timer() - startTime
-    # print(
-    #     "Stage-wise training with floor-location-coordinates information completed in %e s."
-    #     % elapsedTime)
-
     ### evaluate the model
     print("\nPart 3: evaluating the model ...")
     rss = testing_data.rss_scaled
@@ -489,25 +452,11 @@ if __name__ == "__main__":
         np.argmax(flrs, axis=1) - np.argmax(preds[1], axis=1))
     z_diff_squared = (flr_height**2)*np.square(flr_diff)
     dist = np.sqrt(np.sum(np.square(coord - coord_est), axis=1) + z_diff_squared)
-    # dist = norm(coord - coord_est, axis=1)
     dist_weighted = np.sqrt(np.sum(np.square(coord - coord_est_weighted), axis=1) + z_diff_squared)
-    # dist_weighted = norm(coord - coord_est_weighted, axis=1)
     mean_error = dist.mean()
     mean_error_weighted = dist_weighted.mean()
     median_error = np.median(dist)
     median_error_weighted = np.median(dist_weighted)
-
-    # # calculate positioning error based on coordinates regression
-    # coord_preds = coord_scaler.inverse_transform(
-    #     preds[3])  # inverse-scaled version
-    # location_mse = ((coord - coord_preds)**2).mean()
-
-    # # calculate localization errors per EvAAL/IPIN 2015 competition
-    # dist = norm(coord - coord_preds, axis=1)  # Euclidean distance
-    # error = dist + 50 * (
-    #     1 - bld_results) + 4 * flr_diff  # individual error [m]
-    # mean_error_regression = error.mean()
-    # median_error_regression = np.median(error)
 
     ### print out final results
     base_dir = '../results/test/' + (os.path.splitext(
@@ -528,6 +477,7 @@ if __name__ == "__main__":
         output_file.write("* System parameters\n")
         output_file.write("  - GPU ID: %d\n" % gpu_id)
         output_file.write("  - Random number seed: %d\n" % random_seed)
+        output_file.write("  - Grid size [m]: %d\n" % grid_size)
         output_file.write(
             "  - Fraction of data loaded for training and validation: %.2f\n" %
             frac)
@@ -571,18 +521,10 @@ if __name__ == "__main__":
         model.summary(print_fn=lambda x: output_file.write(x + '\n'))
         output_file.write("\n")
         output_file.write("* Performance\n")
-        # output_file.write(" - Building hit rate [%%]: %.2f\n" %
-        #                   (100 * bld_acc))
         output_file.write(" - Floor hit rate [%%]: %.2f\n" % (100 * flr_acc))
-        # output_file.write(" - Building-floor hit rate [%%]: %.2f\n" %
-        #                   (100 * bf_acc))
         output_file.write("  - Mean error [m]: %.2f\n" % mean_error)
         output_file.write(
             "  - Mean error (weighted) [m]: %.2f\n" % mean_error_weighted)
-        # output_file.write(
-        #     "  - Mean error (regression) [m]: %.2f\n" % mean_error_regression)
-        # output_file.write("  - Median error [m]: %.2f\n" % median_error)
-        # output_file.write(
-        #     "  - Median error (weighted) [m]: %.2f\n" % median_error_weighted)
-        # output_file.write("  - Median error (regression) [m]: %.2f\n" %
-        #                   median_error_regression)
+        output_file.write("  - Median error [m]: %.2f\n" % median_error)
+        output_file.write(
+            "  - Median error (weighted) [m]: %.2f\n" % median_error_weighted)
