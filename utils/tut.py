@@ -157,18 +157,15 @@ class TUT(object):
 
         # Add a 'REFPOINT' column based on X and Y coordinates by grouping
         # coordinates based on grid
-        if self.grid_size == 0:
-            self.training_df.loc[:, 'REFPOINT'] = self.training_df.apply(lambda row:
-                                                                         str(row['X'])
-                                                                         + ':' +
-                                                                         str(row['Y']),
-                                                                         axis=1)
-        else:
-            self.training_df.loc[:, 'REFPOINT'] = self.training_df.apply(lambda row:
-                                                                         str(int(row['X'] // self.grid_size))
-                                                                         + ':' +
-                                                                         str(int(row['Y'] // self.grid_size)),
-                                                                         axis=1)
+        if self.grid_size > 0:
+            # replace coordinate values with those of a corresponding grid center
+            self.training_df.loc[:, 'X'] = self.training_df.apply(lambda row: (row['X']//self.grid_size+0.5)*self.grid_size, axis=1)
+            self.training_df.loc[:, 'Y'] = self.training_df.apply(lambda row: (row['Y']//self.grid_size+0.5)*self.grid_size, axis=1)
+        self.training_df.loc[:, 'REFPOINT'] = self.training_df.apply(lambda row:
+                                                                     str(row['X'])
+                                                                     + ':' +
+                                                                     str(row['Y']),
+                                                                     axis=1)
 
         blds = np.unique(self.training_df[['BUILDINGID']])
         flrs = np.unique(self.training_df[['FLOOR']])
