@@ -87,11 +87,11 @@ if __name__ == "__main__":
         "preprocessor to scale/normalize input data before training and validation; default is 'standard_scaler'",
         default='standard_scaler',
         type=str)
-    parser.add_argument(
-        "--grid_size",
-        help="size of a grid [m]",
-        default=0,
-        type=float)
+    # parser.add_argument(
+    #     "--grid_size",
+    #     help="size of a grid [m]",
+    #     default=0,
+    #     type=float)
     parser.add_argument(
         "-B",
         "--batch_size",
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     gpu_id = args.gpu_id
     random_seed = args.random_seed
     dataset = args.dataset
-    grid_size = args.grid_size
+    # grid_size = args.grid_size
     frac = args.frac
     validation_split = args.validation_split
     preprocessor = args.preprocessor
@@ -220,7 +220,7 @@ if __name__ == "__main__":
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
-            grid_size=grid_size)
+            grid_size=0)
         flr_height = tut.floor_height
         training_df = tut.training_df
         training_data = tut.training_data
@@ -233,7 +233,7 @@ if __name__ == "__main__":
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
-            grid_size=grid_size,
+            grid_size=0,
             testing_split=0.2)
         flr_height = tut2.floor_height
         training_df = tut2.training_df
@@ -433,7 +433,7 @@ if __name__ == "__main__":
         output_file.write("* System parameters\n")
         output_file.write("  - GPU ID: %d\n" % gpu_id)
         output_file.write("  - Random number seed: %d\n" % random_seed)
-        output_file.write("  - Grid size [m]: %d\n" % grid_size)
+        # output_file.write("  - Grid size [m]: %d\n" % grid_size)
         output_file.write(
             "  - Fraction of data loaded for training and validation: %.2f\n" %
             frac)
