@@ -7,9 +7,9 @@
 #
 # @brief A scalable indoor localization system (up to reference points) based on
 #        Wi-Fi fingerprinting using a stage-wise-trained multi-class
-#        classification of building and floor and regression of location
-#        (reference point) coordiates with a single-input and multi-output
-#        (SIMO) deep neural network (DNN) model and TUT datasets.
+#        classification of building, floor, and location label and regression of
+#        location coordiates with a single-input and multi-output (SIMO) deep
+#        neural network (DNN) model and TUT datasets.
 #
 # @remarks TBD
 
@@ -521,7 +521,7 @@ if __name__ == "__main__":
         model.summary(print_fn=lambda x: output_file.write(x + '\n'))
         output_file.write("\n")
         output_file.write("* Performance\n")
-        output_file.write(" - Floor hit rate [%%]: %.2f\n" % (100 * flr_acc))
+        output_file.write("  - Floor hit rate [%%]: %.2f\n" % (100 * flr_acc))
         output_file.write("  - Mean error [m]: %.2f\n" % mean_error)
         output_file.write(
             "  - Mean error (weighted) [m]: %.2f\n" % mean_error_weighted)
