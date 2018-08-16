@@ -230,7 +230,7 @@ class TUT(object):
         # BUILDINGID: 1
         # FLOOR: 5
         # REFPOINT: 226
-        # multi-label labels: array of 19937 x 905
+        # multi-label labels: array of 697 x 232
 
         if self.classification_mode == 'hierarchical':
             TrainingData = namedtuple('TrainingData', [
