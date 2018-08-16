@@ -310,8 +310,8 @@ if __name__ == "__main__":
     model = Model(
         inputs=input,
         outputs=[
-            floor_output, location_output
-            # coordinates_output
+            floor_output,
+            location_output
         ])
 
     print(
@@ -321,17 +321,14 @@ if __name__ == "__main__":
         loss=[
             'categorical_crossentropy',
             'categorical_crossentropy'
-            # 'mean_squared_error'
         ],
         loss_weights={
             'floor_output': 1.0,
             'location_output': 0.0
-            # 'coordinates_output': 0.0
         },
         metrics={
             'floor_output': 'accuracy',
             'location_output': 'accuracy'
-            # 'coordinates_output': 'mean_squared_error'
         })
 
     startTime = timer()
@@ -340,7 +337,6 @@ if __name__ == "__main__":
         y={
             'floor_output': labels.floor,
             'location_output': labels.location
-            # 'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -360,17 +356,14 @@ if __name__ == "__main__":
         loss=[
             'categorical_crossentropy',
             'categorical_crossentropy'
-            # 'mean_squared_error'
         ],
         loss_weights={
             'floor_output': 1.0,
             'location_output': 1.0
-            # 'coordinates_output': 0.0
         },
         metrics={
             'floor_output': 'accuracy',
             'location_output': 'accuracy'
-            # 'coordinates_output': 'mean_squared_error'
         })
 
     startTime = timer()
@@ -379,7 +372,6 @@ if __name__ == "__main__":
         y={
             'floor_output': labels.floor,
             'location_output': labels.location
-            # 'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
