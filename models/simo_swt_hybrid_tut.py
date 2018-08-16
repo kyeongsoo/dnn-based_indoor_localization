@@ -5,11 +5,11 @@
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2018-08-04
 #
-# @brief A scalable indoor localization system (up to reference points) based on
-#        Wi-Fi fingerprinting using a stage-wise-trained multi-class
-#        classification of building, floor, and location label and regression of
-#        location coordiates with a single-input and multi-output (SIMO) deep
-#        neural network (DNN) model and TUT datasets.
+
+# @brief A scalable indoor localization system based on Wi-Fi fingerprinting
+#        using a stage-wise-trained multi-class classification of building,
+#        floor, and regression of location coordiates with a single-input and
+#        multi-output (SIMO) deep neural network (DNN) model and TUT datasets.
 #
 # @remarks TBD
 
@@ -301,18 +301,18 @@ if __name__ == "__main__":
     floor_output = Activation(
         'softmax', name='floor_output')(x)  # no dropout for an output layer
 
-    # location classification output
-    x = Dense(labels.location.shape[1])(common_hl_output)
+    # coordinates regression output
+    x = Dense(coord.shape[1], kernel_initializer='normal')(common_hl_output)
     x = BatchNormalization()(x)
-    location_output = Activation(
-        'softmax', name='location_output')(x)  # no dropout for an output layer
+    coordinates_output = Activation(
+        'linear', name='coordinates_output')(x)  # 'linear' activation
 
     # build model
     model = Model(
         inputs=input,
         outputs=[
-            floor_output, location_output
-            # coordinates_output
+            floor_output,
+            coordinates_output
         ])
 
     print(
@@ -321,18 +321,15 @@ if __name__ == "__main__":
         optimizer=optimizer,
         loss=[
             'categorical_crossentropy',
-            'categorical_crossentropy'
-            # 'mean_squared_error'
+            'mean_squared_error'
         ],
         loss_weights={
             'floor_output': 1.0,
-            'location_output': 0.0
-            # 'coordinates_output': 0.0
+            'coordinates_output': 0.0
         },
         metrics={
             'floor_output': 'accuracy',
-            'location_output': 'accuracy'
-            # 'coordinates_output': 'mean_squared_error'
+            'coordinates_output': 'mean_squared_error'
         })
 
     startTime = timer()
@@ -340,8 +337,7 @@ if __name__ == "__main__":
         x={'input': rss},
         y={
             'floor_output': labels.floor,
-            'location_output': labels.location
-            # 'coordinates_output': coord
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -354,24 +350,21 @@ if __name__ == "__main__":
         % elapsedTime)
 
     print(
-        "\nPart 2.2: stage-wise training with floor-location information ..."
+        "\nPart 2.2: stage-wise training with floor-coordinates information ..."
     )
     model.compile(
         optimizer=optimizer,
         loss=[
             'categorical_crossentropy',
-            'categorical_crossentropy'
-            # 'mean_squared_error'
+            'mean_squared_error'
         ],
         loss_weights={
             'floor_output': 1.0,
-            'location_output': 1.0
-            # 'coordinates_output': 0.0
+            'coordinates_output': 1.0
         },
         metrics={
             'floor_output': 'accuracy',
-            'location_output': 'accuracy'
-            # 'coordinates_output': 'mean_squared_error'
+            'coordinates_output': 'mean_squared_error'
         })
 
     startTime = timer()
@@ -379,8 +372,7 @@ if __name__ == "__main__":
         x={'input': rss},
         y={
             'floor_output': labels.floor,
-            'location_output': labels.location
-            # 'coordinates_output': coord
+            'coordinates_output': coord
         },
         batch_size=batch_size,
         epochs=epochs,
@@ -389,7 +381,7 @@ if __name__ == "__main__":
         shuffle=True)
     elapsedTime = timer() - startTime
     print(
-        "Stage-wise training with floor-location information completed in %e s."
+        "Stage-wise training with floor-coordiates information completed in %e s."
         % elapsedTime)
 
     ### evaluate the model
@@ -403,60 +395,24 @@ if __name__ == "__main__":
     y_col_name = 'Y'
 
     # calculate the classification accuracies and localization errors
-    preds = model.predict(rss, batch_size=batch_size)
+    flrs_pred, coords_scaled_pred = model.predict(rss, batch_size=batch_size)
     flr_results = (np.equal(
-        np.argmax(flrs, axis=1), np.argmax(preds[0], axis=1))).astype(int)
+        np.argmax(flrs, axis=1), np.argmax(flrs_pred, axis=1))).astype(int)
     flr_acc = flr_results.mean()
+    coord_est = coord_scaler.inverse_transform(coords_scaled_pred)  # inverse-scaling
 
-    # calculate positioning error based on locations
-    locs = preds[1]
-    n_samples = len(flrs)
-    n_locs = locs.shape[1]  # number of locations (reference points)
-    idxs = np.argpartition(
-        locs, -N)[:, -N:]  # (unsorted) indexes of up to N nearest neighbors
-    threshold = scaling * np.amax(locs, axis=1)
-    training_labels = np.concatenate((training_data.labels.floor,
-                                      training_data.labels.location), axis=1)
-    training_coord_avg = training_data.coord_avg
-    coord_est = np.zeros((n_samples, 2))
-    coord_est_weighted = np.zeros((n_samples, 2))
-    for i in range(n_samples):
-        xs = []
-        ys = []
-        ws = []
-        for j in idxs[i]:
-            if locs[i][j] >= threshold[i]:
-                loc = np.zeros(n_locs)
-                loc[j] = 1
-                rows = np.where((training_labels == np.concatenate((flrs[i],
-                                                                    loc))).all(axis=1))  # tuple of row indexes
-                if rows[0].size > 0:
-                    xs.append(training_df.loc[training_df.index[rows[0][0]],
-                                              x_col_name])
-                    ys.append(training_df.loc[training_df.index[rows[0][0]],
-                                              y_col_name])
-                    ws.append(locs[i][j])
-        if len(xs) > 0:
-            coord_est[i] = np.array((xs, ys)).mean(axis=1)
-            coord_est_weighted[i] = np.array((np.average(xs, weights=ws),
-                                            np.average(ys, weights=ws)))
-        else:
-            if rows[0].size > 0:
-                key = str(np.argmax(blds[i])) + '-' + str(np.argmax(flrs[i]))
-            else:
-                key = str(np.argmax(blds[i]))
-            coord_est[i] = coord_est_weighted[i] = training_coord_avg[key]
+    # calculate 2D localization errors
+    dist_2d = norm(coord - coord_est, axis=1)
+    mean_error_2d = dist_2d.mean()
+    median_error_2d = np.median(dist_2d)
 
-    # calculate localization errors
+    # calculate 3D localization errors
     flr_diff = np.absolute(
-        np.argmax(flrs, axis=1) - np.argmax(preds[1], axis=1))
+        np.argmax(flrs, axis=1) - np.argmax(flrs_pred, axis=1))
     z_diff_squared = (flr_height**2)*np.square(flr_diff)
-    dist = np.sqrt(np.sum(np.square(coord - coord_est), axis=1) + z_diff_squared)
-    dist_weighted = np.sqrt(np.sum(np.square(coord - coord_est_weighted), axis=1) + z_diff_squared)
-    mean_error = dist.mean()
-    mean_error_weighted = dist_weighted.mean()
-    median_error = np.median(dist)
-    median_error_weighted = np.median(dist_weighted)
+    dist_3d = np.sqrt(np.sum(np.square(coord - coord_est), axis=1) + z_diff_squared)
+    mean_error_3d = dist_3d.mean()
+    median_error_3d = np.median(dist_3d)
 
     ### print out final results
     base_dir = '../results/test/' + (os.path.splitext(
@@ -522,9 +478,7 @@ if __name__ == "__main__":
         output_file.write("\n")
         output_file.write("* Performance\n")
         output_file.write("  - Floor hit rate [%%]: %.2f\n" % (100 * flr_acc))
-        output_file.write("  - Mean error [m]: %.2f\n" % mean_error)
-        output_file.write(
-            "  - Mean error (weighted) [m]: %.2f\n" % mean_error_weighted)
-        output_file.write("  - Median error [m]: %.2f\n" % median_error)
-        output_file.write(
-            "  - Median error (weighted) [m]: %.2f\n" % median_error_weighted)
+        output_file.write("  - Mean 2D error [m]: %.2f\n" % mean_error_2d)
+        output_file.write("  - Median 2D error [m]: %.2f\n" % median_error_2d)
+        output_file.write("  - Mean 3D error [m]: %.2f\n" % mean_error_3d)
+        output_file.write("  - Median 3D error [m]: %.2f\n" % median_error_3d)
