@@ -17,7 +17,8 @@ from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential, load_model
 
 
-def deep_autoencoder(input_data=None,
+def deep_autoencoder(dataset='tut',
+                     input_data=None,
                      preprocessor='standard_scaler',
                      hidden_layers=[],
                      cache=False,
@@ -29,6 +30,7 @@ def deep_autoencoder(input_data=None,
     """Deep autoencoder
 
     Keyword arguments:
+    dataset -- a data set for training, validation, and testing; choices are 'tut' (default), 'tut2', 'tut3', and 'ujiindoorloc'
     input_data -- two-dimensional array of RSSs
     preprocessor -- preprocessor for scaling/normalizing input data (loss function selected based on this)
     hidden_layers -- list of numbers of units in DAE hidden layers
@@ -50,66 +52,66 @@ def deep_autoencoder(input_data=None,
 
     if cache == True:
         if model_fname == None:
-            model_fname = './saved/dae_H' + '-'.join(map(
-                str, hidden_layers)) + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(
-                    batch_size, epochs, loss, preprocessor) + '.hdf5'
-
+            model_fname = './saved/dae/' + dataset + '/H' \
+                          + '-'.join(map(str, hidden_layers)) \
+                          + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(batch_size, epochs, loss, preprocessor) \
+                          + '.h5'
         if os.path.isfile(model_fname) and (os.path.getmtime(model_fname) >
                                             os.path.getmtime(__file__)):
-            model = load_model(model_fname)
             # # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
             # model = load_model(model_fname, compile=False)
             # model.compile(optimizer=DAE_OPTIMIZER, loss=DAE_LOSS)
-    else:
-        # each layer is named explicitly to avoid any conflicts in
-        # model.compile() by models using DAE
-        model = Sequential()
-        input_dim = input_data.shape[1]  # number of RSSs per sample
+            return load_model(model_fname)
+
+    # each layer is named explicitly to avoid any conflicts in
+    # model.compile() by models using DAE
+    model = Sequential()
+    input_dim = input_data.shape[1]  # number of RSSs per sample
+    model.add(
+        Dense(
+            hidden_layers[0],
+            input_dim=input_dim,
+            activation='relu',
+            name='dae_hidden_1'))
+    n_hl = 1
+    for units in hidden_layers[1:]:
+        n_hl += 1
         model.add(
             Dense(
-                hidden_layers[0],
-                input_dim=input_dim,
-                activation='relu',
-                name='dae_hidden_1'))
-        n_hl = 1
-        for units in hidden_layers[1:]:
-            n_hl += 1
-            model.add(
-                Dense(
-                    units, activation='relu', name='dae_hidden_' + str(n_hl)))
-        model.add(Dense(input_dim, activation='sigmoid', name='dae_output'))
-        model.compile(optimizer=optimizer, loss=loss)
+                units, activation='relu', name='dae_hidden_' + str(n_hl)))
+    model.add(Dense(input_dim, activation='sigmoid', name='dae_output'))
+    model.compile(optimizer=optimizer, loss=loss)
 
-        history = model.fit(
-            input_data,
-            input_data,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_split=validation_split,
-            shuffle=True)
+    history = model.fit(
+        input_data,
+        input_data,
+        batch_size=batch_size,
+        epochs=epochs,
+        validation_split=validation_split,
+        shuffle=True)
 
-        # remove the decoder part
-        num_to_remove = (len(hidden_layers) + 1) // 2
-        for i in range(num_to_remove):
-            model.pop()
+    # remove the decoder part
+    num_to_remove = (len(hidden_layers) + 1) // 2
+    for i in range(num_to_remove):
+        model.pop()
 
-        # # set all layers (i.e., DAE encoder) to non-trainable (weights will not be updated)
-        # # N.B. the effect of freezing seems to be negative
-        # for layer in model.layers[:]:
-        #     layer.trainable = False
+    # # set all layers (i.e., DAE encoder) to non-trainable (weights will not be updated)
+    # # N.B. the effect of freezing seems to be negative
+    # for layer in model.layers[:]:
+    #     layer.trainable = False
 
-        if cache == True:
-            pathlib.Path(os.path.dirname(model_fname)).mkdir(
-                parents=True, exist_ok=True)
-            model.save(model_fname)  # save for later use
+    if cache == True:
+        pathlib.Path(os.path.dirname(model_fname)).mkdir(
+            parents=True, exist_ok=True)
+        model.save(model_fname)  # save for later use
 
-            with open(os.path.splitext(model_fname)[0] + '.org',
-                      'w') as output_file:
-                model.summary(print_fn=lambda x: output_file.write(x + '\n'))
-                output_file.write(
-                    "Training loss: %.4e\n" % history.history['loss'][-1])
-                output_file.write(
-                    "Validation loss: %.4ef\n" % history.history['val_loss'][-1])
+        with open(os.path.splitext(model_fname)[0] + '.org',
+                  'w') as output_file:
+            model.summary(print_fn=lambda x: output_file.write(x + '\n'))
+            output_file.write(
+                "Training loss: %.4e\n" % history.history['loss'][-1])
+            output_file.write(
+                "Validation loss: %.4ef\n" % history.history['val_loss'][-1])
 
     return model
 

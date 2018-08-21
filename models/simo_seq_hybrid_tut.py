@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ##
-# @file     simo_swt_hybrid_tut.py
+# @file     simo_seq_hybrid_tut.py
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
-# @date     2018-08-04
+# @date     2018-08-17
 #
 # @brief A scalable indoor localization system based on Wi-Fi fingerprinting
-#        using a stage-wise-trained multi-class classification of building,
-#        floor, and regression of location coordiates with a single-input and
+#        using a sequential construction of multi-class classification of floor
+#        and regression of location coordiates with a single-input and
 #        multi-output (SIMO) deep neural network (DNN) model and TUT datasets.
 #
 # @remarks TBD
@@ -33,14 +33,14 @@ import random as rn
 from numpy.linalg import norm
 from time import time
 from timeit import default_timer as timer
-### import keras and tensorflow backend
+### import keras and tensorflor backend
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
 import tensorflow as tf
 num_cpus = multiprocessing.cpu_count()
 session_conf = tf.ConfigProto(
-    # intra_op_parallelism_threads=1,
-    # inter_op_parallelism_threads=1
+#     intra_op_parallelism_threads=1,
+#     inter_op_parallelism_threads=1
     intra_op_parallelism_threads=num_cpus,
     inter_op_parallelism_threads=num_cpus
 )  # force TF to use single thread for reproducibility
@@ -159,6 +159,16 @@ if __name__ == "__main__":
         default='128',
         type=str)
     parser.add_argument(
+        "--floor_weight",
+        help="loss weight for a floor; default 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
+        "--coordinates_weight",
+        help="loss weight for a coordinates; default 1.0",
+        default=1.0,
+        type=float)
+    parser.add_argument(
         "-V",
         "--verbose",
         help=
@@ -210,8 +220,24 @@ if __name__ == "__main__":
         coordinates_hidden_layers = [
             int(i) for i in (args.coordinates_hidden_layers).split(',')
         ]
+    floor_weight = args.floor_weight
+    coordinates_weight = args.coordinates_weight
     verbose = args.verbose
 
+    # set path variables
+    base_dir = '../results/test/' + (os.path.splitext(
+        os.path.basename(__file__))[0]).replace('test_', '') + '/' + dataset
+    pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
+    # base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
+    #     epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))
+    base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}".format(
+        epochs, batch_size, dropout)
+    # + '_T' + "{0:.2f}".format(args.training_ratio) \
+    # sae_model_file = base_file_name + '.h5'
+    now = datetime.datetime.now()
+    current_time = now.strftime("%Y%m%d-%H%M%S")
+    output_file_base = base_file_name + '_' + current_time
+    
     ### initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
     rn.seed(random_seed)
@@ -230,7 +256,7 @@ if __name__ == "__main__":
     if dataset == 'tut':
         from tut import TUT
         tut = TUT(
-            cache=cache,
+            path='../data/tut',
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
@@ -238,7 +264,7 @@ if __name__ == "__main__":
     elif dataset == 'tut2':
         from tut import TUT2
         tut = TUT2(
-            cache=cache,
+            path='../data/tut',
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
@@ -247,7 +273,7 @@ if __name__ == "__main__":
     elif dataset == 'tut3':
         from tut import TUT3
         tut = TUT3(
-            cache=cache,
+            path='../data/tut',
             frac=frac,
             preprocessor=preprocessor,
             classification_mode='hierarchical',
@@ -261,9 +287,9 @@ if __name__ == "__main__":
     testing_df = tut.testing_df
     testing_data = tut.testing_data
         
-    ### build and do stage-wise training of a SIMO model
+    ### build and train sequentially a SIMO model
     print(
-        "\nPart 2: building and stage-wise training a SIMO model for hybrid classification and regression ..."
+        "\nPart 2: sequential building and training a SIMO model for hybrid classification and regression ..."
     )
     rss = training_data.rss_scaled
     coord = training_data.coord_scaled
@@ -315,7 +341,8 @@ if __name__ == "__main__":
             x = Activation('relu')(x)
             x = Dropout(dropout)(x)
     common_hl_output = x
-
+    
+    print("\nPart 2.1: buidling and training a floor classifier ...")
     # floor classification output
     if floor_hidden_layers != '':
         for i in range(len(floor_hidden_layers)):
@@ -330,58 +357,20 @@ if __name__ == "__main__":
     x = BatchNormalization()(x)
     floor_output = Activation(
         'softmax', name='floor_output')(x)  # no dropout for an output layer
-
-    # coordinates regression output
-    x = common_hl_output
-    if coordinates_hidden_layers != '':
-        for i in range(len(coordinates_hidden_layers)):
-            x = Dense(coordinates_hidden_layers[i], kernel_initializer='normal', name='coordinates_hidden_layer_{:d}'.format(i))(x)
-            x = BatchNormalization()(x)
-            x = Activation('relu')(x)
-            x = Dropout(dropout)(x)
-        i += 1
-    else:
-        i = 0
-    x = Dense(coord.shape[1], kernel_initializer='normal', name='coordinates_hidden_layer_{:d}'.format(i))(x)
-    x = BatchNormalization()(x)
-    coordinates_output = Activation(
-        'linear', name='coordinates_output')(x)  # 'linear' activation
     
-    # build model
-    model = Model(
-        inputs=input,
-        outputs=[
-            floor_output,
-            coordinates_output
-        ])
-
-    print(
-        "\nPart 2.1: stage-wise training with floor information ...")
-    model.compile(
+    f_model = Model(inputs=input, outputs=floor_output)
+    f_model.compile(
         optimizer=optimizer,
-        loss=[
-            'categorical_crossentropy',
-            'mean_squared_error'
-        ],
-        loss_weights={
-            'floor_output': 1.0,
-            'coordinates_output': 0.0
-        },
-        metrics={
-            'floor_output': 'accuracy',
-            'coordinates_output': 'mean_squared_error'
-        })
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
     weights_file = os.path.expanduser("~/tmp/best_f-weights.h5")
     checkpoint = ModelCheckpoint(weights_file, monitor='val_loss', save_best_only=True, verbose=0)
-    early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0)
-    
+    early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=0)
+
     startTime = timer()
-    f_history = model.fit(
-        x={'input': rss},
-        y={
-            'floor_output': labels.floor,
-            'coordinates_output': coord
-        },
+    f_history = f_model.fit(
+        x=rss,
+        y=labels.floor,
         batch_size=batch_size,
         epochs=epochs,
         verbose=verbose,
@@ -390,57 +379,58 @@ if __name__ == "__main__":
         shuffle=True)
     elapsedTime = timer() - startTime
     elapsedTime_total = elapsedTime
-    print(
-        "Stage-wise training with floor information completed in %e s."
-        % elapsedTime)
-    model.load_weights(weights_file)  # load weights from the best model
+    print("Floor classifier trained in in %e s." % elapsedTime)
+    f_model.load_weights(weights_file)  # load weights from the best model
 
-    print(
-        "\nPart 2.2: stage-wise training with floor-coordinates information ..."
-    )
+    print("\nPart 2.2: buidling and training a hybrid floor classifier and coordinates regressor ...")
+    # coordinates regression output
+    x = common_hl_output
+    for units in coordinates_hidden_layers:
+        x = Dense(units, kernel_initializer='normal')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dropout)(x)
+    x = Dense(coord.shape[1], kernel_initializer='normal')(x)
+    x = BatchNormalization()(x)
+    coordinates_output = Activation(
+        'linear', name='coordinates_output')(x)  # 'linear' activation
 
     # reinitialize hidden layers based on
     # https://www.codementor.io/nitinsurya/how-to-re-initialize-keras-model-weights-et41zre2g
     # - common
     if common_hidden_layers != '':
         for i in range(len(common_hidden_layers)):
-            layer = model.get_layer('common_hidden_layer_{:d}'.format(i))
+            layer = f_model.get_layer('common_hidden_layer_{:d}'.format(i))
             if hasattr(layer, 'kernel_initializer'):
                 layer.kernel.initializer.run(session=sess)
     # # - floor
     # if floor_hidden_layers != '':
     #     for i in range(len(floor_hidden_layers)):
-    #         layer = model.get_layer('floor_hidden_layer_{:d}'.format(i))
+    #         layer = f_model.get_layer('floor_hidden_layer_{:d}'.format(i))
     #         if hasattr(layer, 'kernel_initializer'):
     #             layer.kernel.initializer.run(session=sess)
     #     i += 1
     # else:
     #     i = 0
-    # layer = model.get_layer('floor_hidden_layer_{:d}'.format(i))
+    # layer = f_model.get_layer('floor_hidden_layer_{:d}'.format(i))
     # if hasattr(layer, 'kernel_initializer'):
     #     layer.kernel.initializer.run(session=sess)
-    # - coordinats
-    if coordinates_hidden_layers != '':
-        for i in range(len(coordinates_hidden_layers)):
-            layer = model.get_layer('coordinates_hidden_layer_{:d}'.format(i))
-            if hasattr(layer, 'kernel_initializer'):
-                layer.kernel.initializer.run(session=sess)
-        i += 1
-    else:
-        i = 0
-    layer = model.get_layer('coordinates_hidden_layer_{:d}'.format(i))
-    if hasattr(layer, 'kernel_initializer'):
-        layer.kernel.initializer.run(session=sess)
-                
-    model.compile(
+
+    fc_model = Model(
+        inputs=input,
+        outputs=[
+            floor_output,
+            coordinates_output
+        ])
+    fc_model.compile(
         optimizer=optimizer,
         loss=[
             'categorical_crossentropy',
             'mean_squared_error'
         ],
         loss_weights={
-            'floor_output': 1.0,
-            'coordinates_output': 1.0
+            'floor_output': floor_weight,
+            'coordinates_output': coordinates_weight
         },
         metrics={
             'floor_output': 'accuracy',
@@ -448,10 +438,10 @@ if __name__ == "__main__":
         })
     weights_file = os.path.expanduser("~/tmp/best_fc-weights.h5")
     checkpoint = ModelCheckpoint(weights_file, monitor='val_loss', save_best_only=True, verbose=0)
-    early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=0)
-
+    early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=0)
+    
     startTime = timer()
-    fc_history = model.fit(
+    fc_history = fc_model.fit(
         x={'input': rss},
         y={
             'floor_output': labels.floor,
@@ -465,10 +455,9 @@ if __name__ == "__main__":
         shuffle=True)
     elapsedTime = timer() - startTime
     elapsedTime_total += elapsedTime
-    print(
-        "Stage-wise training with floor-coordiates information completed in %e s."
-        % elapsedTime)
-    model.load_weights(weights_file)  # load weights from the best model
+    print("Floor classifier and coordinate regressor trained in in %e s." %
+          elapsedTime)
+    fc_model.load_weights(weights_file)  # load weights from the best model
 
     ### evaluate the model
     print("\nPart 3: evaluating the model ...")
@@ -480,7 +469,7 @@ if __name__ == "__main__":
     y_col_name = 'Y'
 
     # calculate the classification accuracies and localization errors
-    flrs_pred, coords_scaled_pred = model.predict(rss, batch_size=batch_size)
+    flrs_pred, coords_scaled_pred = fc_model.predict(rss, batch_size=batch_size)
     flr_results = (np.equal(
         np.argmax(flrs, axis=1), np.argmax(flrs_pred, axis=1))).astype(int)
     flr_acc = flr_results.mean()
@@ -500,18 +489,6 @@ if __name__ == "__main__":
     median_error_3d = np.median(dist_3d)
 
     ### print out final results
-    base_dir = '../results/test/' + (os.path.splitext(
-        os.path.basename(__file__))[0]).replace('test_', '') + '/' + dataset
-    pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
-    # base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}_H{3:s}".format(
-    #     epochs, batch_size, dropout, args.hidden_layers.replace(',', '-'))
-    base_file_name = base_dir + "/E{0:d}_B{1:d}_D{2:.2f}".format(
-        epochs, batch_size, dropout)
-    # + '_T' + "{0:.2f}".format(args.training_ratio) \
-    # sae_model_file = base_file_name + '.h5'
-    now = datetime.datetime.now()
-    output_file_base = base_file_name + '_' + now.strftime("%Y%m%d-%H%M%S")
-
     with open(output_file_base + '.org', 'w') as output_file:
         output_file.write(
             "#+STARTUP: showall\n")  # unfold everything when opening
@@ -570,6 +547,9 @@ if __name__ == "__main__":
             for units in coordinates_hidden_layers[1:]:
                 output_file.write("-%d" % units)
             output_file.write("\n")
+        output_file.write("  - Floor loss weight: %.2f\n" % floor_weight)
+        output_file.write(
+            "  - Coordinates loss weight: %.2f\n" % coordinates_weight)
         output_file.write("\n")
         # output_file.write("* Model Summary\n")
         # model.summary(print_fn=lambda x: output_file.write(x + '\n'))

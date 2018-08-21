@@ -18,7 +18,7 @@ import os
 import numpy as np
 import pathlib
 ### import keras and its backend (e.g., tensorflow)
-from keras.layers import Activation, Dense, Dropout, Input
+from keras.layers import Activation, Dense, Input
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model, Sequential, load_model
 
@@ -29,7 +29,8 @@ def masking_noise(x, corruption_level):
     return x_corrupted
 
 
-def sdae(input_data=None,
+def sdae(dataset='tut',
+         input_data=None,
          preprocessor='standard_scaler',
          hidden_layers=[],
          cache=False,
@@ -42,6 +43,7 @@ def sdae(input_data=None,
     """Stacked denoising autoencoder
 
     Keyword arguments:
+    dataset -- a data set for training, validation, and testing; choices are 'tut' (default), 'tut2', 'tut3', and 'ujiindoorloc'
     input_data -- two-dimensional array of RSSs
     preprocessor -- preprocessor used to scale/normalize the original input data (information only)
     hidden_layers -- list of numbers of units in SDAE hidden layers
@@ -64,86 +66,86 @@ def sdae(input_data=None,
 
     if cache == True:
         if model_fname == None:
-            model_fname = './saved/sdae_H' + '-'.join(map(
-                str, hidden_layers)) + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(
-                    batch_size, epochs, loss, preprocessor) + '.hdf5'
-
+            model_fname = './saved/sdae/' + dataset + '/H' \
+                          + '-'.join(map(str, hidden_layers)) \
+                          + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(batch_size,epochs, loss, preprocessor) \
+                          + '.h5'
         if os.path.isfile(model_fname) and (os.path.getmtime(model_fname) >
                                             os.path.getmtime(__file__)):
-            model = load_model(model_fname)
             # # below are the workaround from oarriaga@GitHub: https://github.com/keras-team/keras/issues/4044
             # model = load_model(model_fname, compile=False)
             # model.compile(optimizer=SDAE_OPTIMIZER, loss=SDAE_LOSS)
-    else:
-        # each layer is named explicitly to avoid any conflicts in
-        # model.compile() by models using SDAE
+            return load_model(model_fname)
 
-        input_dim = input_data.shape[1]  # number of RSSs per sample
-        input = Input(shape=(input_dim, ), name='sdae_input')
+    # each layer is named explicitly to avoid any conflicts in
+    # model.compile() by models using SDAE
 
-        encoded_input = []
-        distorted_input = []
-        encoded = []
-        # encoded_bn = []
-        decoded = []
-        autoencoder = []
-        encoder = []
-        x = input_data
-        n_hl = len(hidden_layers)
-        all_layers = [input_dim] + hidden_layers
-        for i in range(n_hl):
-            encoded_input.append(
-                Input(
-                    shape=(all_layers[i], ),
-                    name='sdae_encoded_input' + str(i)))
-            encoded.append(
-                Dense(all_layers[i + 1],
-                      activation='sigmoid')(encoded_input[i]))
-            # encoded_bn.append(BatchNormalization()(encoded[i]))
-            # decoded.append(
-            #     Dense(all_layers[i], activation='sigmoid')(encoded_bn[i]))
-            decoded.append(
-                Dense(all_layers[i], activation='sigmoid')(encoded[i]))
-            autoencoder.append(
-                Model(inputs=encoded_input[i], outputs=decoded[i]))
-            # encoder.append(
-            #     Model(inputs=encoded_input[i], outputs=encoded_bn[i]))
-            encoder.append(Model(inputs=encoded_input[i], outputs=encoded[i]))
-            autoencoder[i].compile(optimizer=optimizer, loss=loss)
-            encoder[i].compile(optimizer=optimizer, loss=loss)
-            autoencoder[i].fit(
-                x=masking_noise(x, corruption_level),
-                y=x,
-                batch_size=batch_size,
-                epochs=epochs,
-                validation_split=validation_split,
-                shuffle=True)
-            x = encoder[i].predict(x)
+    input_dim = input_data.shape[1]  # number of RSSs per sample
+    input = Input(shape=(input_dim, ), name='sdae_input')
 
-        x = input
-        for i in range(n_hl):
-            x = encoder[i](x)
-        output = x
-        model = Model(inputs=input, outputs=output)
-        model.compile(optimizer=optimizer, loss=loss)
+    encoded_input = []
+    distorted_input = []
+    encoded = []
+    # encoded_bn = []
+    decoded = []
+    autoencoder = []
+    encoder = []
+    x = input_data
+    n_hl = len(hidden_layers)
+    all_layers = [input_dim] + hidden_layers
+    for i in range(n_hl):
+        encoded_input.append(
+            Input(
+                shape=(all_layers[i], ),
+                name='sdae_encoded_input' + str(i)))
+        encoded.append(
+            Dense(all_layers[i + 1],
+                  activation='sigmoid')(encoded_input[i]))
+        # encoded_bn.append(BatchNormalization()(encoded[i]))
+        # decoded.append(
+        #     Dense(all_layers[i], activation='sigmoid')(encoded_bn[i]))
+        decoded.append(
+            Dense(all_layers[i], activation='sigmoid')(encoded[i]))
+        autoencoder.append(
+            Model(inputs=encoded_input[i], outputs=decoded[i]))
+        # encoder.append(
+        #     Model(inputs=encoded_input[i], outputs=encoded_bn[i]))
+        encoder.append(Model(inputs=encoded_input[i], outputs=encoded[i]))
+        autoencoder[i].compile(optimizer=optimizer, loss=loss)
+        encoder[i].compile(optimizer=optimizer, loss=loss)
+        autoencoder[i].fit(
+            x=masking_noise(x, corruption_level),
+            y=x,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_split=validation_split,
+            shuffle=True)
+        x = encoder[i].predict(x)
 
-        # # set all layers (i.e., SDAE encoder) to non-trainable (weights will not be updated)
-        # # N.B. the effect of freezing seems to be negative
-        # for layer in model.layers[:]:
-        #     layer.trainable = False
+    x = input
+    for i in range(n_hl):
+        x = encoder[i](x)
+    output = x
+    model = Model(inputs=input, outputs=output)
+    model.compile(optimizer=optimizer, loss=loss)
 
-        if cache == True:
-            pathlib.Path(os.path.dirname(model_fname)).mkdir(
-                parents=True, exist_ok=True)
-            model.save(model_fname)  # save for later use
+    # # set all layers (i.e., SDAE encoder) to non-trainable (weights will not be updated)
+    # # N.B. the effect of freezing seems to be negative
+    # for layer in model.layers[:]:
+    #     layer.trainable = False
 
-            with open(os.path.splitext(model_fname)[0] + '.org',
-                      'w') as output_file:
-                model.summary(print_fn=lambda x: output_file.write(x + '\n'))
-                output_file.write(
-                    "Training loss: %.4e\n" % history.history['loss'][-1])
-                output_file.write(
-                    "Validation loss: %.4ef\n" % history.history['val_loss'][-1])            
+    if cache == True:
+        pathlib.Path(os.path.dirname(model_fname)).mkdir(
+            parents=True, exist_ok=True)
+        model.save(model_fname)  # save for later use
+
+        with open(os.path.splitext(model_fname)[0] + '.org',
+                  'w') as output_file:
+            model.summary(print_fn=lambda x: output_file.write(x + '\n'))
+            # output_file.write(
+            #     "Training loss: %.4e\n" % history.history['loss'][-1])
+            # output_file.write(
+            #     "Validation loss: %.4ef\n" % history.history['val_loss'][-1])
 
     return model
 

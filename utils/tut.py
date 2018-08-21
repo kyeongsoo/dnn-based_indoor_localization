@@ -30,66 +30,68 @@ from collections import namedtuple
 class TUT(object):
     """Data loader for the TUT fingerprint datasets."""
     def __init__(self,
-                 path='.',
+                 path='../data/tut',
                  cache=False,
+                 cache_fname=None,
                  frac=1.0,
                  preprocessor='standard_scaler',
                  classification_mode='hierarchical',
                  lack_of_ap=-110,
                  grid_size=0):
-        self.floor_height = 3.7  # floor height [m]
-        self.training_rss_fname = path + '/' + 'Training_rss_21Aug17.csv'  # RSS=100 for lack of AP
-        self.training_coords_fname = path + '/' + 'Training_coordinates_21Aug17.csv'  # 3-D coordinates in meters
-        self.testing_rss_fname = path + '/' + 'Test_rss_21Aug17.csv'  # RSS=100 for lack of AP
-        self.testing_coords_fname = path + '/' + 'Test_coordinates_21Aug17.csv'  # 3-D coordinates in meters
+        self.path = path
         self.cache = cache
+        self.cache_fname = cache_fname
         self.frac = frac
-        if preprocessor == 'standard_scaler':
+        self.preprocessor = preprocessor
+        self.classification_mode = classification_mode
+        self.lack_of_ap = lack_of_ap
+        self.grid_size = grid_size
+
+        if self.preprocessor == 'standard_scaler':
             from sklearn.preprocessing import StandardScaler
             self.rss_scaler = StandardScaler()
             self.coord_scaler = StandardScaler()
-        elif preprocessor == 'minmax_scaler':
+        elif self.preprocessor == 'minmax_scaler':
             from sklearn.preprocessing import MinMaxScaler
             self.rss_scaler = MinMaxScaler()
             self.coord_scaler = MinMaxScaler()
-        elif preprocessor == 'normalizer':
+        elif self.preprocessor == 'normalizer':
             from sklearn.preprocessing import Normalizer
             self.rss_scaler = Normalizer()
             self.coord_scaler = Normalizer()
         else:
-            print("{0:s} preprocessor is not supported.".format(preprocessor))
+            print("{0:s} preprocessor is not supported.".format(self.preprocessor))
             sys.exit()
-        self.classification_mode = classification_mode
-        self.lack_of_ap = lack_of_ap
-        self.grid_size = grid_size
-        self.saved_fname = path + '/saved/' + __class__.__name__.lower() + '_F{0:.1f}_L{1:d}_P{2:s}.cpkl'.format(
-            frac, lack_of_ap, preprocessor)  # cloudpickle file name for saved objects
-
+        self.floor_height = 3.7  # floor height [m]
+        self.training_rss_fname = self.path + '/' + 'Training_rss_21Aug17.csv'  # RSS=100 for lack of AP
+        self.training_coords_fname = self.path + '/' + 'Training_coordinates_21Aug17.csv'  # 3-D coordinates in meters
+        self.testing_rss_fname = self.path + '/' + 'Test_rss_21Aug17.csv'  # RSS=100 for lack of AP
+        self.testing_coords_fname = self.path + '/' + 'Test_coordinates_21Aug17.csv'  # 3-D coordinates in meters
         self.num_aps = 0
         self.training_df = None
         self.training_data = None
         self.testing_df = None
         self.testing_data = None
-        if self.cache == True and os.path.isfile(self.saved_fname) and (os.path.getmtime(
-                self.saved_fname) > os.path.getmtime(__file__)):
-            with open(self.saved_fname, 'rb') as input_file:
+        self.cache_loaded = False
+        self.load_data()
+        if self.cache_loaded == False:
+            self.process_data()
+            self.save_data()
+        
+    def load_data(self):
+        if self.cache_fname == None:
+            self.cache_fname = self.path + '/saved/' + self.__class__.__name__.lower() + '/F{0:.1f}_L{1:d}_P{2:s}.cpkl'.format(
+                self.frac, self.lack_of_ap, self.preprocessor)  # cloudpickle file name for saved objects
+        if self.cache == True and os.path.isfile(self.cache_fname) and (os.path.getmtime(
+                self.cache_fname) > os.path.getmtime(__file__)):
+            with open(self.cache_fname, 'rb') as input_file:
                 self.training_df = cloudpickle.load(input_file)
                 self.training_data = cloudpickle.load(input_file)
                 self.testing_df = cloudpickle.load(input_file)
                 self.testing_data = cloudpickle.load(input_file)
+                self.cache_loaded = True
                 return
-        self.load_data()
-        self.process_data()
-        if self.cache == True:
-            pathlib.Path(os.path.dirname(self.saved_fname)).mkdir(
-                parents=True, exist_ok=True)
-            with open(self.saved_fname, 'wb') as output_file:
-                cloudpickle.dump(self.training_df, output_file)
-                cloudpickle.dump(self.training_data, output_file)
-                cloudpickle.dump(self.testing_df, output_file)
-                cloudpickle.dump(self.testing_data, output_file)
-        
-    def load_data(self):
+
         rss_df = pd.read_csv(self.training_rss_fname, header=None)
         self.num_aps = rss_df.shape[1]
         rss_df.columns = np.char.array(np.repeat('WAP', self.num_aps)) + np.char.array(range(self.num_aps), unicode=True)
@@ -264,6 +266,16 @@ class TUT(object):
                 coord_scaled=testing_coord_scaled,
                 labels=testing_labels)
 
+    def save_data(self):
+        if self.cache == True:
+            pathlib.Path(os.path.dirname(self.cache_fname)).mkdir(
+                parents=True, exist_ok=True)
+            with open(self.cache_fname, 'wb') as output_file:
+                cloudpickle.dump(self.training_df, output_file)
+                cloudpickle.dump(self.training_data, output_file)
+                cloudpickle.dump(self.testing_df, output_file)
+                cloudpickle.dump(self.testing_data, output_file)
+
 
 class TUT2(TUT):
     """Data loader for the TUT fingerprint datasets with different division between training and testing datasets."""
@@ -285,7 +297,14 @@ class TUT2(TUT):
 
         super(TUT2, self).process_data()
 
-            
+
+class TUT3(TUT):
+    """Data loader for the TUT fingerprint datasets with swapping training and testing datasets."""
+    def process_data(self):
+        self.training_df, self.testing_df = self.testing_df, self.training_df
+        super(TUT3, self).process_data()
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -332,7 +351,6 @@ if __name__ == "__main__":
     ### load dataset after scaling
     print("Loading TUT data ...")
     tut = TUT(
-        path='../data/tut',
         cache=cache,
         frac=frac,
         preprocessor=preprocessor,
@@ -342,7 +360,6 @@ if __name__ == "__main__":
     
     print("Loading TUT2 data ...")
     tut2 = TUT2(
-        path='../data/tut',
         cache=cache,
         frac=frac,
         preprocessor=preprocessor,
@@ -350,3 +367,12 @@ if __name__ == "__main__":
         lack_of_ap=lack_of_ap,
         grid_size=grid_size,
         testing_split=0.2)
+
+    print("Loading TUT3 data ...")
+    tut3 = TUT3(
+        cache=cache,
+        frac=frac,
+        preprocessor=preprocessor,
+        classification_mode='hierarchical',
+        lack_of_ap=lack_of_ap,
+        grid_size=grid_size)
