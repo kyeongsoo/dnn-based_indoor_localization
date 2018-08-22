@@ -185,7 +185,7 @@ def simo_hybrid_tut(
             x = Dropout(dropout)(x)
     common_hl_output = x
 
-    print("- Buidling and training a hybrid floor classifier and coordinates regressor ...")
+    print("- Buidling and training a hybrid floor classifier and coordinates regressor ...", end='')
     # floor classification output
     if floor_hidden_layers != '':
         for units in floor_hidden_layers:
@@ -248,7 +248,7 @@ def simo_hybrid_tut(
         validation_split=validation_split,
         shuffle=True)
     elapsedTime = timer() - startTime
-    print("- DNN trained in {0:.4e} s.".format(elapsedTime))
+    print(" completed in {0:.4e} s".format(elapsedTime))
     model.load_weights(weights_file)  # load weights from the best model
 
     ### evaluate the model
