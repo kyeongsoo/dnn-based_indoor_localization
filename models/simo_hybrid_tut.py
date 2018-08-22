@@ -53,7 +53,6 @@ from keras.models import Model
 
 
 def simo_hybrid_tut(
-        num_runs: int,
         gpu_id: int,
         dataset: str,
         frac: float,
@@ -75,7 +74,7 @@ def simo_hybrid_tut(
         verbose: int
 ):
     """Multi-floor indoor localization based on hybrid floor classification and
-    coordinates regression based on a single-input and multi-output (SIMO) deep
+    coordinates regression using a single-input and multi-output (SIMO) deep
     neural network (DNN) model and TUT datasets.
 
     Keyword arguments:
@@ -92,7 +91,7 @@ def simo_hybrid_tut(
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
     sess = tf.Session(
         graph=tf.get_default_graph(),
-        config=session_conf)  # for reproducibility
+        config=session_conf)
     K.set_session(sess)
 
     ### load datasets after scaling
@@ -477,13 +476,12 @@ if __name__ == "__main__":
     elapsedTimes = np.empty(num_runs)
     for i in range(num_runs):
         print("\n########## {0:s} run ##########".format(num2words(i+1, to='ordinal_num')))
-        rst = simo_hybrid_tut(num_runs, gpu_id, dataset, frac,
-                              validation_split, preprocessor, batch_size,
-                              epochs, optimizer, dropout, corruption_level,
-                              dae_hidden_layers, sdae_hidden_layers, cache,
-                              common_hidden_layers, floor_hidden_layers,
-                              coordinates_hidden_layers, floor_weight,
-                              coordinates_weight, verbose)
+        rst = simo_hybrid_tut(gpu_id, dataset, frac, validation_split,
+                              preprocessor, batch_size, epochs, optimizer,
+                              dropout, corruption_level, dae_hidden_layers,
+                              sdae_hidden_layers, cache, common_hidden_layers,
+                              floor_hidden_layers, coordinates_hidden_layers,
+                              floor_weight, coordinates_weight, verbose)
         flr_accs[i] = rst.flr_acc
         mean_error_2ds[i] = rst.mean_error_2d
         median_error_2ds[i] = rst.median_error_2d
