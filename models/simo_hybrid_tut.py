@@ -185,7 +185,6 @@ def simo_hybrid_tut(
             x = Dropout(dropout)(x)
     common_hl_output = x
 
-    print("- Buidling and training a hybrid floor classifier and coordinates regressor ...", end='')
     # floor classification output
     if floor_hidden_layers != '':
         for units in floor_hidden_layers:
@@ -233,7 +232,8 @@ def simo_hybrid_tut(
     weights_file = os.path.expanduser("~/tmp/best_weights.h5")
     checkpoint = ModelCheckpoint(weights_file, monitor='val_loss', save_best_only=True, verbose=0)
     early_stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=0)
-    
+
+    print("- Training a hybrid floor classifier and coordinates regressor ...", end='')
     startTime = timer()
     history = model.fit(
         x={'input': rss},
@@ -257,8 +257,6 @@ def simo_hybrid_tut(
     labels = testing_data.labels
     flrs = labels.floor
     coord = testing_data.coord  # original coordinates
-    x_col_name = 'X'
-    y_col_name = 'Y'
 
     # calculate the classification accuracies and localization errors
     flrs_pred, coords_scaled_pred = model.predict(rss, batch_size=batch_size)
@@ -378,11 +376,10 @@ if __name__ == "__main__":
         default='1024,1024,1024',
         type=str)
     parser.add_argument(
-        "--cache",
+        "--no_cache",
         help=
-        "whether to load a trained model from/save it to a cache; default is True",
-        default=True,
-        type=bool)
+        "disable loading a trained model from/saving it to a cache",
+        action='store_true')
     parser.add_argument(
         "--common_hidden_layers",
         help=
@@ -408,7 +405,7 @@ if __name__ == "__main__":
         type=float)
     parser.add_argument(
         "--coordinates_weight",
-        help="loss weight for a coordinates; default 1.0",
+        help="loss weight for coordinates; default 1.0",
         default=1.0,
         type=float)
     parser.add_argument(
@@ -444,7 +441,7 @@ if __name__ == "__main__":
         sdae_hidden_layers = [
             int(i) for i in (args.sdae_hidden_layers).split(',')
         ]
-    cache = args.cache
+    cache = not args.no_cache
     if args.common_hidden_layers == '':
         common_hidden_layers = ''
     else:

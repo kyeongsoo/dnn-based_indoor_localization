@@ -51,14 +51,17 @@ class TUT(object):
             from sklearn.preprocessing import StandardScaler
             self.rss_scaler = StandardScaler()
             self.coord_scaler = StandardScaler()
+            self.coord_3d_scaler = StandardScaler()
         elif self.preprocessor == 'minmax_scaler':
             from sklearn.preprocessing import MinMaxScaler
             self.rss_scaler = MinMaxScaler()
             self.coord_scaler = MinMaxScaler()
+            self.coord_3d_scaler = MinMaxScaler()
         elif self.preprocessor == 'normalizer':
             from sklearn.preprocessing import Normalizer
             self.rss_scaler = Normalizer()
             self.coord_scaler = Normalizer()
+            self.coord_3d_scaler = Normalizer()
         else:
             print("{0:s} preprocessor is not supported.".format(self.preprocessor))
             sys.exit()
@@ -136,7 +139,7 @@ class TUT(object):
             training_rss_scaled = training_rss
             testing_rss_scaled = testing_rss
 
-        # process local coordinates
+        # process location coordinates (for 2D)
         training_coord_x = np.asarray(
             self.training_df['X'], dtype=np.float)
         training_coord_y = np.asarray(
@@ -156,6 +159,22 @@ class TUT(object):
         else:
             training_coord_scaled = training_coord
             testing_coord_scaled = testing_coord
+
+        # process location coordinates (for 3D)
+        training_coord_z = np.asarray(
+            self.training_df['Z'], dtype=np.float)
+        training_coord_3d = np.column_stack((training_coord_x, training_coord_y, training_coord_z))
+        testing_coord_z = np.asarray(
+            self.testing_df['Z'], dtype=np.float)
+        testing_coord_3d = np.column_stack((testing_coord_x, testing_coord_y, testing_coord_z))
+        if self.coord_3d_scaler != None:
+            training_coord_3d_scaled = self.coord_3d_scaler.fit_transform(
+                training_coord_3d)
+            testing_coord_3d_scaled = self.coord_3d_scaler.transform(
+                testing_coord_3d)  # scaled version
+        else:
+            training_coord_3d_scaled = training_coord_3d
+            testing_coord_3d_scaled = testing_coord_3d
 
         # Add a 'REFPOINT' column based on X and Y coordinates by grouping
         # coordinates based on grid
@@ -232,10 +251,15 @@ class TUT(object):
         # multi-label labels: array of 697 x 232
 
         if self.classification_mode == 'hierarchical':
-            TrainingData = namedtuple('TrainingData', [
-                'rss', 'rss_scaled', 'rss_scaler', 'coord', 'coord_avg',
-                'coord_scaled', 'coord_scaler', 'labels'
-            ])
+            TrainingData = namedtuple('TrainingData', ['rss', 'rss_scaled',
+                                                       'rss_scaler', 'coord',
+                                                       'coord_avg',
+                                                       'coord_scaled',
+                                                       'coord_scaler',
+                                                       'coord_3d',
+                                                       'coord_3d_scaled',
+                                                       'coord_3d_scaler',
+                                                       'labels' ])
             TrainingLabels = namedtuple('TrainingLabels',
                                         ['building', 'floor', 'location'])
             training_labels = TrainingLabels(
@@ -250,11 +274,16 @@ class TUT(object):
                 coord_avg=training_coord_avg,
                 coord_scaled=training_coord_scaled,
                 coord_scaler=self.coord_scaler,
+                coord_3d=training_coord_3d,
+                coord_3d_scaled=training_coord_3d_scaled,
+                coord_3d_scaler=self.coord_3d_scaler,
                 labels=training_labels)
 
-            TestingData = namedtuple(
-                'TestingData',
-                ['rss', 'rss_scaled', 'coord', 'coord_scaled', 'labels'])
+            TestingData = namedtuple('TestingData', ['rss', 'rss_scaled',
+                                                     'coord', 'coord_scaled',
+                                                     'coord_3d',
+                                                     'coord_3d_scaled',
+                                                     'labels'])
             TestingLabels = namedtuple('TestingLabels',
                                        ['building', 'floor'])
             testing_labels = TestingLabels(
@@ -264,6 +293,8 @@ class TUT(object):
                 rss_scaled=testing_rss_scaled,
                 coord=testing_coord,
                 coord_scaled=testing_coord_scaled,
+                coord_3d=testing_coord_3d,
+                coord_3d_scaled=testing_coord_3d_scaled,
                 labels=testing_labels)
 
     def save_data(self):
@@ -309,12 +340,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-C",
-        "--cache",
+        "--no_cache",
         help=
-        "whether to load data from/save them to a cache; default is False",
-        default=False,
-        type=bool)
+        "disable loading a trained model from/saving it to a cache",
+        action='store_true')
     parser.add_argument(
         "-F",
         "--frac",
@@ -342,7 +371,7 @@ if __name__ == "__main__":
         default=0,
         type=float)
     args = parser.parse_args()
-    cache = args.cache
+    cache = not args.no_cache
     frac = args.frac
     preprocessor = args.preprocessor
     lack_of_ap = args.lack_of_ap

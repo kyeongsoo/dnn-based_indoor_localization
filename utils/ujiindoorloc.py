@@ -242,12 +242,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-C",
-        "--cache",
+        "--no_cache",
         help=
-        "whether to load data from/save them to a cache; default is False",
-        default=False,
-        type=bool)
+        "disable loading a trained model from/saving it to a cache",
+        action='store_true')
     parser.add_argument(
         "-F",
         "--frac",
@@ -269,7 +267,7 @@ if __name__ == "__main__":
         default=-110,
         type=int)
     args = parser.parse_args()
-    cache = args.cache
+    cache = not args.no_cache
     frac = args.frac
     preprocessor = args.preprocessor
     lack_of_ap = args.lack_of_ap

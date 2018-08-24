@@ -192,12 +192,10 @@ if __name__ == "__main__":
         default=20,
         type=int)
     parser.add_argument(
-        "-C",
-        "--cache",
+        "--no_cache",
         help=
-        "whether to load a trained model from/save it to a cache; default is False",
-        default=False,
-        type=bool)
+        "disable loading a trained model from/saving it to a cache",
+        action='store_true')
     parser.add_argument(
         "--validation_split",
         help=
@@ -245,7 +243,7 @@ if __name__ == "__main__":
     epochs = args.epochs
     validation_split = args.validation_split
     hidden_layers = [int(i) for i in (args.hidden_layers).split(',')]
-    cache = args.cache
+    cache = not args.no_cache
     frac = args.frac
     preprocessor = args.preprocessor
     optimizer = args.optimizer
