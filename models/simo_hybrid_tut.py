@@ -10,7 +10,9 @@
 #        coordiates with a single-input and multi-output (SIMO) deep neural
 #        network (DNN) model and TUT datasets.
 #
-# @remarks TBD
+# @remarks The results are published in the proceedings of <a
+#          href="https://is-candar.org/GCA18/">The 3rd International Workshop on
+#          GPU Computing and AI (GCA'18)</a>.
 
 ### import basic modules and a model to test
 import os
