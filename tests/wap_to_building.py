@@ -9,16 +9,14 @@
 #
 
 
-#import itertools
+# import itertools
 import numpy as np
 import pandas as pd
 
 
 # variables
-N = 10                          # the number of largest RSS values to consider
-                                # in determining WAP's building ID
-lack_of_ap = -110               # RSS value indicating no detection of the
-                                # corresponding AP
+N = 10  # number of largest RSS values to consider
+lack_of_ap = -110               # RSS value for unheard APs
 
 
 train_df = pd.read_csv('../data/ujiindoorloc/trainingData.csv', header=0)
@@ -36,7 +34,8 @@ for wap in waps:
     row_idx = np.argsort(rss)[-N:]  # indexes of N largest RSS values
 
     # obtain the majority value
-    (values, counts) = np.unique(train_df.loc[row_idx, 'BUILDINGID'], return_counts=True)
+    (values, counts) = np.unique(train_df.loc[row_idx, 'BUILDINGID'],
+                                 return_counts=True)
     wap_bld[wap] = values[np.argmax(counts)]
 
     print(wap + "--> Building {0:d}".format(wap_bld[wap]))
