@@ -16,31 +16,34 @@
 
 ### import basic modules first
 import os
-os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-import platform
-if platform.system() == 'Windows':
-    data_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-    )
-    models_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    )
-    utils_path = os.path.expanduser(
-        '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-    )
-else:
-    data_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-    )
-    models_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-    )
-    utils_path = os.path.expanduser(
-        '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-    )
+# os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
 import sys
-sys.path.insert(0, utils_path)
-sys.path.insert(0, models_path)
+sys.path.insert(0, '../models')
+sys.path.insert(0, '../utils')
+# import platform
+# if platform.system() == 'Windows':
+#     data_path = os.path.expanduser(
+#         '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+#     )
+#     models_path = os.path.expanduser(
+#         '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
+#     )
+#     utils_path = os.path.expanduser(
+#         '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
+#     )
+# else:
+#     data_path = os.path.expanduser(
+#         '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
+#     )
+#     models_path = os.path.expanduser(
+#         '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
+#     )
+#     utils_path = os.path.expanduser(
+#         '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
+#     )
+# import sys
+# sys.path.insert(0, utils_path)
+# sys.path.insert(0, models_path)
 from deep_autoencoder import deep_autoencoder
 from ujiindoorloc import UJIIndoorLoc
 ### import other modules (except keras and its backend which will be loaded later for reproducibility)
