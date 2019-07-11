@@ -77,15 +77,15 @@ class TUT(object):
         self.testing_data = None
         self.cache_loaded = False
         self.load_data()
-        if self.cache_loaded == False:
+        if not self.cache_loaded:
             self.process_data()
             self.save_data()
-        
+
     def load_data(self):
-        if self.cache_fname == None:
+        if self.cache_fname is None:
             self.cache_fname = self.path + '/saved/' + self.__class__.__name__.lower() + '/F{0:.1f}_L{1:d}_P{2:s}.cpkl'.format(
                 self.frac, self.lack_of_ap, self.preprocessor)  # cloudpickle file name for saved objects
-        if self.cache == True and os.path.isfile(self.cache_fname) and (os.path.getmtime(
+        if self.cache and os.path.isfile(self.cache_fname) and (os.path.getmtime(
                 self.cache_fname) > os.path.getmtime(__file__)):
             with open(self.cache_fname, 'rb') as input_file:
                 self.training_df = cloudpickle.load(input_file)
@@ -127,7 +127,7 @@ class TUT(object):
         testing_rss = np.asarray(self.testing_df.iloc[:, :self.num_aps], dtype=np.float)
         testing_rss[testing_rss ==
                     100] = self.lack_of_ap  # RSS value for lack of AP
-        if self.rss_scaler != None:
+        if self.rss_scaler is not None:
             # scale over flattened data for joint scaling
             training_rss_scaled = (self.rss_scaler.fit_transform(
                 training_rss.reshape((-1, 1)))).reshape(
@@ -151,7 +151,7 @@ class TUT(object):
         testing_coord_y = np.asarray(
             self.testing_df['Y'], dtype=np.float)
         testing_coord = np.column_stack((testing_coord_x, testing_coord_y))
-        if self.coord_scaler != None:
+        if self.coord_scaler is not None:
             training_coord_scaled = self.coord_scaler.fit_transform(
                 training_coord)
             testing_coord_scaled = self.coord_scaler.transform(
@@ -167,7 +167,7 @@ class TUT(object):
         testing_coord_z = np.asarray(
             self.testing_df['Z'], dtype=np.float)
         testing_coord_3d = np.column_stack((testing_coord_x, testing_coord_y, testing_coord_z))
-        if self.coord_3d_scaler != None:
+        if self.coord_3d_scaler is not None:
             training_coord_3d_scaled = self.coord_3d_scaler.fit_transform(
                 training_coord_3d)
             testing_coord_3d_scaled = self.coord_3d_scaler.transform(
@@ -298,7 +298,7 @@ class TUT(object):
                 labels=testing_labels)
 
     def save_data(self):
-        if self.cache == True:
+        if self.cache:
             pathlib.Path(os.path.dirname(self.cache_fname)).mkdir(
                 parents=True, exist_ok=True)
             with open(self.cache_fname, 'wb') as output_file:
