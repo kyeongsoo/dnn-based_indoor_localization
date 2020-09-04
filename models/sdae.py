@@ -17,10 +17,9 @@
 import os
 import numpy as np
 import pathlib
-### import keras and its backend (e.g., tensorflow)
-from keras.layers import Activation, Dense, Input
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model, Sequential, load_model
+import tensorflow as tf
+from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.models import Model, load_model
 
 
 def masking_noise(x, corruption_level):
@@ -64,8 +63,8 @@ def sdae(dataset='tut',
         print("{0:s} preprocessor is not supported.".format(preprocessor))
         sys.exit()
 
-    if cache == True:
-        if model_fname == None:
+    if cache:
+        if model_fname is None:
             model_fname = './saved/sdae/' + dataset + '/H' \
                           + '-'.join(map(str, hidden_layers)) \
                           + "_B{0:d}_E{1:d}_L{2:s}_P{3:s}".format(batch_size,epochs, loss, preprocessor) \
@@ -101,9 +100,6 @@ def sdae(dataset='tut',
         encoded.append(
             Dense(all_layers[i + 1],
                   activation='sigmoid')(encoded_input[i]))
-        # encoded_bn.append(BatchNormalization()(encoded[i]))
-        # decoded.append(
-        #     Dense(all_layers[i], activation='sigmoid')(encoded_bn[i]))
         decoded.append(
             Dense(all_layers[i], activation='sigmoid')(encoded[i]))
         autoencoder.append(
@@ -134,7 +130,7 @@ def sdae(dataset='tut',
     # for layer in model.layers[:]:
     #     layer.trainable = False
 
-    if cache == True:
+    if cache:
         pathlib.Path(os.path.dirname(model_fname)).mkdir(
             parents=True, exist_ok=True)
         model.save(model_fname)  # save for later use
@@ -151,23 +147,21 @@ def sdae(dataset='tut',
 
 
 if __name__ == "__main__":
-    ### import basic modules and a model to test
+    # import basic modules and a model to test
     os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
     import sys
     sys.path.insert(0, '../utils')
     from ujiindoorloc import UJIIndoorLoc
-    ### import other modules; keras and its backend will be loaded later
+    # import other modules; keras and its backend will be loaded later
     import argparse
-    import numpy as np
     import random as rn
-    ### import keras and its backend (e.g., tensorflow)
+    # import keras and its backend (e.g., tensorflow)
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
-    import tensorflow as tf
-    session_conf = tf.ConfigProto(
-        intra_op_parallelism_threads=1, inter_op_parallelism_threads=1
-    )  # force TF to use single thread for reproducibility
-    from keras import backend as K
+    # session_conf = tf.ConfigProto(
+    #     intra_op_parallelism_threads=1, inter_op_parallelism_threads=1
+    # )  # force TF to use single thread for reproducibility
+    # from keras import backend as K
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -249,27 +243,23 @@ if __name__ == "__main__":
     optimizer = args.optimizer
     corruption_level = args.corruption_level
 
-    ### initialize numpy, random, TensorFlow, and keras
+    # initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
     rn.seed(random_seed)
-    tf.set_random_seed(random_seed)
+    tf.random.set_seed(random_seed)
     if gpu_id >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
-    sess = tf.Session(
-        graph=tf.get_default_graph(),
-        config=session_conf)  # for reproducibility
-    K.set_session(sess)
 
-    ### load dataset after scaling
+    # load dataset after scaling
     print("Loading UJIIndoorLoc data ...")
 
     ujiindoorloc = UJIIndoorLoc(
         path='../data/ujiindoorloc', frac=frac, preprocessor=preprocessor)
     _, training_data, _, _ = ujiindoorloc.load_data()
 
-    ### build SDAE model
+    # build SDAE model
     print("Buidling SDAE model ...")
     model = sdae(
         training_data.rss_scaled,
