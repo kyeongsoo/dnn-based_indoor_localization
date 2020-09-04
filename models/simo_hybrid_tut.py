@@ -14,46 +14,38 @@
 #          href="https://is-candar.org/GCA18/">The 3rd International Workshop
 #          on GPU Computing and AI (GCA'18)</a>.
 
-### import basic modules and a model to test
+# OS & system modules
 import os
-# os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
 import sys
-sys.path.insert(0, '../models')
-sys.path.insert(0, '../utils')
-from deep_autoencoder import deep_autoencoder
-from sdae import sdae
-from mean_ci import mean_ci
-### import other modules; keras and its backend will be loaded later
+# other modules
 import argparse
 import datetime
-import math
-import multiprocessing
 import numpy as np
-import pandas as pd
 import pathlib
 import random as rn
 from collections import namedtuple
 from num2words import num2words
 from numpy.linalg import norm
-from time import time
 from timeit import default_timer as timer
-### import keras and tensorflow backend
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
+# keras and tensorflow backend
 import tensorflow as tf
-# import tensorflow.compat.v1 as tf
-# tf.disable_v2_behavior()
-num_cpus = multiprocessing.cpu_count()
-session_conf = tf.compat.v1.ConfigProto(
-    intra_op_parallelism_threads=num_cpus,
-    inter_op_parallelism_threads=num_cpus )
-from tensorflow import keras
-from tensorflow.compat.v1.keras import backend as K
+# from tensorflow.compat.v1.keras import backend as K
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import Activation, Dense, Dropout, Input
 from tensorflow.keras.layers import BatchNormalization
-from tensorflow.keras.metrics import categorical_accuracy
+# from tensorflow.keras.metrics import categorical_accuracy
 from tensorflow.keras.models import Model
+# user modules
+sys.path.insert(0, '../models')
+sys.path.insert(0, '../utils')
+from deep_autoencoder import deep_autoencoder
+from sdae import sdae
+from mean_ci import mean_ci
+
+
+# TF settings
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
 
 
 def simo_hybrid_tut(
@@ -85,20 +77,20 @@ def simo_hybrid_tut(
 
     """
 
-    ### initialize numpy, random, TensorFlow, and keras
-    np.random.seed()            # based on current time or OS-specific randomness source
-    rn.seed()                   #  "
+    # initialize numpy, random, TensorFlow, and keras
+    np.random.seed()
+    rn.seed()
     tf.random.set_seed(rn.randint(0, 1000000))
     if gpu_id >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
-    sess = tf.compat.v1.Session(
-        graph=tf.compat.v1.get_default_graph(),
-        config=session_conf)
-    K.set_session(sess)
+    # sess = tf.compat.v1.Session(
+    #     graph=tf.compat.v1.get_default_graph(),
+    #     config=session_conf)
+    # K.set_session(sess)
 
-    ### load datasets after scaling
+    # load datasets after scaling
     print("Loading data ...")
     if dataset == 'tut':
         from tut import TUT
@@ -134,7 +126,7 @@ def simo_hybrid_tut(
     testing_df = tut.testing_df
     testing_data = tut.testing_data
 
-    ### build and train a SIMO model
+    # build and train a SIMO model
     print(
         "Building and training a SIMO model for hybrid classification and regression ..."
     )
@@ -255,7 +247,7 @@ def simo_hybrid_tut(
     print(" completed in {0:.4e} s".format(elapsedTime))
     model.load_weights(weights_file)  # load weights from the best model
 
-    ### evaluate the model
+    # evaluate the model
     print("Evaluating the model ...")
     rss = testing_data.rss_scaled
     labels = testing_data.labels
@@ -420,7 +412,7 @@ if __name__ == "__main__":
         default=0,
         type=int)
     args = parser.parse_args()
-        
+
     # set variables using command-line arguments
     num_runs = args.num_runs
     gpu_id = args.gpu_id
@@ -468,7 +460,7 @@ if __name__ == "__main__":
     coordinates_weight = args.coordinates_weight
     verbose = args.verbose
 
-    ### run simo_hybrid_tut() num_runs times
+    # run simo_hybrid_tut() num_runs times
     flr_accs = np.empty(num_runs)
     mean_error_2ds = np.empty(num_runs)
     median_error_2ds = np.empty(num_runs)
@@ -490,7 +482,7 @@ if __name__ == "__main__":
         median_error_3ds[i] = rst.median_error_3d
         elapsedTimes[i] = rst.elapsedTime
 
-    ### print out final results
+    # print out final results
     base_dir = '../results/test/' + (os.path.splitext(
         os.path.basename(__file__))[0]).replace('test_', '') + '/' + dataset
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
