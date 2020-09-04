@@ -11,8 +11,8 @@
 #        network (DNN) model and TUT datasets.
 #
 # @remarks The results are published in the proceedings of <a
-#          href="https://is-candar.org/GCA18/">The 3rd International Workshop on
-#          GPU Computing and AI (GCA'18)</a>.
+#          href="https://is-candar.org/GCA18/">The 3rd International Workshop
+#          on GPU Computing and AI (GCA'18)</a>.
 
 ### import basic modules and a model to test
 import os
@@ -41,17 +41,19 @@ from timeit import default_timer as timer
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
 import tensorflow as tf
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 num_cpus = multiprocessing.cpu_count()
-session_conf = tf.ConfigProto(
+session_conf = tf.compat.v1.ConfigProto(
     intra_op_parallelism_threads=num_cpus,
-    inter_op_parallelism_threads=num_cpus
-)
-from keras import backend as K
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.layers import Activation, Dense, Dropout, Input
-from keras.layers.normalization import BatchNormalization
-from keras.metrics import categorical_accuracy
-from keras.models import Model
+    inter_op_parallelism_threads=num_cpus )
+from tensorflow import keras
+from tensorflow.compat.v1.keras import backend as K
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.layers import Activation, Dense, Dropout, Input
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.metrics import categorical_accuracy
+from tensorflow.keras.models import Model
 
 
 def simo_hybrid_tut(
@@ -86,13 +88,13 @@ def simo_hybrid_tut(
     ### initialize numpy, random, TensorFlow, and keras
     np.random.seed()            # based on current time or OS-specific randomness source
     rn.seed()                   #  "
-    tf.set_random_seed(rn.randint(0, 1000000))
+    tf.random.set_seed(rn.randint(0, 1000000))
     if gpu_id >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
-    sess = tf.Session(
-        graph=tf.get_default_graph(),
+    sess = tf.compat.v1.Session(
+        graph=tf.compat.v1.get_default_graph(),
         config=session_conf)
     K.set_session(sess)
 
