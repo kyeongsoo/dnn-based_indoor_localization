@@ -30,7 +30,7 @@ from collections import namedtuple
 class UJIIndoorLoc(object):
     def __init__(self,
                  path='../data/ujiindoorloc',
-                 cache=False,
+                 cache=True,
                  cache_fname=None,
                  frac=1.0,
                  preprocessor='standard_scaler',
@@ -259,9 +259,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--no_cache",
+        "--nocache",
         help=
-        "disable loading a trained model from/saving it to a cache",
+        "disable cacheing processed data",
         action='store_true')
     parser.add_argument(
         "-F",
@@ -284,7 +284,7 @@ if __name__ == "__main__":
         default=-110,
         type=int)
     args = parser.parse_args()
-    cache = not args.no_cache
+    cache = not args.nocache
     frac = args.frac
     preprocessor = args.preprocessor
     lack_of_ap = args.lack_of_ap

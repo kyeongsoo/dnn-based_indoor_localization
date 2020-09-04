@@ -100,7 +100,7 @@ class TUT(object):
         rss_df.columns = np.char.array(np.repeat('WAP', self.num_aps)) + np.char.array(range(self.num_aps), unicode=True)
         coords_df = pd.read_csv(self.training_coords_fname, header=None)
         coords_df.columns = ['X', 'Y', 'Z']
-        self.training_df = pd.concat([rss_df, coords_df], axis=1, join_axes=[rss_df.index])
+        self.training_df = pd.concat([rss_df, coords_df], axis=1).reindex(rss_df.index)
         self.training_df['FLOOR'] = (round(self.training_df['Z'] / self.floor_height)).astype(int)
         self.training_df['BUILDINGID'] = 0
 
@@ -109,7 +109,7 @@ class TUT(object):
         rss_df.columns = np.char.array(np.repeat('WAP', self.num_aps)) + np.char.array(range(self.num_aps), unicode=True)
         coords_df = pd.read_csv(self.testing_coords_fname, header=None)
         coords_df.columns = ['X', 'Y', 'Z']
-        self.testing_df = pd.concat([rss_df, coords_df], axis=1, join_axes=[rss_df.index])
+        self.testing_df = pd.concat([rss_df, coords_df], axis=1).reindex(rss_df.index)
         self.testing_df['FLOOR'] = (round(self.testing_df['Z'] / self.floor_height)).astype(int)
         self.testing_df['BUILDINGID'] = 0
 
