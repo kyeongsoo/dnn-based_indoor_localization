@@ -9,12 +9,11 @@
 #        RSS data in Wi-Fi fingerprinting.
 
 import os
-import sys
 import pathlib
-### import keras and its backend (e.g., tensorflow)
-from keras.layers import Dense
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model, Sequential, load_model
+import tensorflow as tf
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.models import Model, Sequential, load_model
 
 
 def deep_autoencoder(dataset='tut',
@@ -100,7 +99,7 @@ def deep_autoencoder(dataset='tut',
     # for layer in model.layers[:]:
     #     layer.trainable = False
 
-    if cache == True:
+    if cache:
         pathlib.Path(os.path.dirname(model_fname)).mkdir(
             parents=True, exist_ok=True)
         model.save(model_fname)  # save for later use
@@ -117,44 +116,18 @@ def deep_autoencoder(dataset='tut',
 
 
 if __name__ == "__main__":
-    ### import basic modules and a model to test
+    # import basic modules and a model to test
     os.environ['PYTHONHASHSEED'] = '0'  # for reproducibility
-    import platform
-    if platform.system() == 'Windows':
-        data_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-        )
-        models_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-        )
-        utils_path = os.path.expanduser(
-            '~kks/Research/Ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-        )
-    else:
-        data_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/xjtlu_surf_indoor_localization/data/UJIIndoorLoc'
-        )
-        models_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/models'
-        )
-        utils_path = os.path.expanduser(
-            '~kks/research/ongoing/localization/elsevier_nn_scalable_indoor_localization/program/utils'
-        )
     import sys
-    sys.path.insert(0, utils_path)
+    sys.path.insert(0, '../utils')
     from ujiindoorloc import UJIIndoorLoc
-    ### import other modules; keras and its backend will be loaded later
+    # import other modules; keras and its backend will be loaded later
     import argparse
     import numpy as np
     import random as rn
-    ### import keras and its backend (e.g., tensorflow)
+    # import keras and its backend (e.g., tensorflow)
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # supress warning messages
-    import tensorflow as tf
-    session_conf = tf.ConfigProto(
-        intra_op_parallelism_threads=1, inter_op_parallelism_threads=1
-    )  # force TF to use single thread for reproducibility
-    from keras import backend as K
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -229,47 +202,23 @@ if __name__ == "__main__":
     preprocessor = args.preprocessor
     optimizer = args.optimizer
 
-    ### initialize numpy, random, TensorFlow, and keras
+    # initialize numpy, random, TensorFlow, and keras
     np.random.seed(random_seed)
     rn.seed(random_seed)
-    tf.set_random_seed(random_seed)
+    tf.random.set_seed(random_seed)
     if gpu_id >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ''
-    sess = tf.Session(
-        graph=tf.get_default_graph(),
-        config=session_conf)  # for reproducibility
-    K.set_session(sess)
 
-    ### load dataset after scaling
+    # load dataset after scaling
     print("Loading UJIIndoorLoc data ...")
 
-    if preprocessor == 'standard_scaler':
-        from sklearn.preprocessing import StandardScaler
-        rss_scaler = StandardScaler()
-        utm_scaler = StandardScaler()
-    elif preprocessor == 'minmax_scaler':
-        from sklearn.preprocessing import MinMaxScaler
-        rss_scaler = MinMaxScaler()
-        utm_scaler = MinMaxScaler()
-    elif preprocessor == 'normalizer':
-        from sklearn.preprocessing import Normalizer
-        rss_scaler = Normalizer()
-        utm_scaler = Normalizer()
-    else:
-        rss_scaler = None
-        utm_scaler = None
-
     ujiindoorloc = UJIIndoorLoc(
-        data_path,
-        frac=frac,
-        rss_scaler=rss_scaler,
-        utm_scaler=utm_scaler,
-        classification_mode='hierarchical')
+        path='../data/ujiindoorloc', frac=frac, preprocessor=preprocessor)
     _, training_data, _, _ = ujiindoorloc.load_data()
 
-    ### build DAE model
+    # build DAE model
     print("Buidling DAE model ...")
     model = deep_autoencoder(
         training_data.rss_scaled,
