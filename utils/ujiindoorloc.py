@@ -59,8 +59,8 @@ class UJIIndoorLoc(object):
         else:
             print("{0:s} preprocessor is not supported.".format(preprocessor))
             sys.exit()
-        self.training_fname = path + '/' + 'trainingData.csv'  # RSS=100 for lack of AP
-        self.testing_fname = path + '/' + 'validationData.csv'  # validation data as testing data
+        self.training_fname = path + '/' + 'trainingdata.csv'  # RSS=100 for lack of AP
+        self.testing_fname = path + '/' + 'validationdata.csv'  # validation data as testing data
         self.num_aps = 0
         self.training_df = None
         self.training_data = None
