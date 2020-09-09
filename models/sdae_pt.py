@@ -33,7 +33,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class NoiseRssDataset(Dataset):
     """Convert a numpy RSS input to a dataset."""
-    
+
     def __init__(self, rss, corruption_level):
         self.rss = rss.astype('float32')
         self.rss_corrupted = self.rss
