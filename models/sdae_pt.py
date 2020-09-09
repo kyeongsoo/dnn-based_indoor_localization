@@ -32,14 +32,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class NoiseRssDataset(Dataset):
+    """Convert a numpy RSS input to a dataset."""
+    
     def __init__(self, rss, corruption_level):
-        if type(rss) == np.ndarray:
-            self.rss = rss.astype('float32')
-        elif torch.is_tensor(rss):
-            self.rss = rss.detach().numpy().astype('float32')
-        else:
-            print("Type {0:s} is not supported.".format(type(rss)))
-            sys.exit()
+        self.rss = rss.astype('float32')
         self.rss_corrupted = self.rss
         # apply masking noise
         self.rss_corrupted[np.random.rand(len(rss)) < corruption_level] = 0.0
@@ -116,14 +112,14 @@ def sdae_pt(dataset='tut',
     for i in range(n_hl):
         units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
         units.append(('af'+str(i), nn.Sigmoid()))
-    model = nn.Sequential(OrderedDict(units))
+    model = nn.Sequential(OrderedDict(units)).to(device)
 
     # layer-wise pretraining
     for i in range(n_hl):
         autoencoder = nn.Sequential(
             nn.Linear(all_layers[i], all_layers[i+1]),
             nn.Sigmoid(),
-            nn.Linear(all_layers[i+1], all_layers[i]))
+            nn.Linear(all_layers[i+1], all_layers[i])).to(device)
         autoencoder.train()
         optimizer = optim.SGD(autoencoder.parameters(), lr=0.001, momentum=0.9)
         dataset = NoiseRssDataset(x, corruption_level=corruption_level)
@@ -132,7 +128,7 @@ def sdae_pt(dataset='tut',
         for epoch in range(epochs):
             running_loss = 0
             for x, y in dataloader:
-                # move data GPU if available
+                # move data to GPU if available
                 x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
                 optimizer.zero_grad()
                 y_pred = autoencoder(x)
@@ -146,6 +142,8 @@ def sdae_pt(dataset='tut',
         # update input data for the next layer
         encoder = nn.Sequential(*list(autoencoder.children())[0:2])  # remove decoder
         x = encoder(x)
+        if device == torch.device("cuda"):
+            x = x.detach().cpu().clone().numpy()  # for custom dataset based on numpy
 
         # copy the weights and biases of the pretrained layer
         model[2*i].weight = nn.Parameter(autoencoder[0].weight.detach().clone())
