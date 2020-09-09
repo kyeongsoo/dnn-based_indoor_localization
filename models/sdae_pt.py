@@ -144,6 +144,8 @@ def sdae_pt(dataset='tut',
         x = encoder(x)
         if device == torch.device("cuda"):
             x = x.detach().cpu().clone().numpy()  # for custom dataset based on numpy
+        else:
+            x = x.detach().clone().numpy()
 
         # copy the weights and biases of the pretrained layer
         model[2*i].weight = nn.Parameter(autoencoder[0].weight.detach().clone())
