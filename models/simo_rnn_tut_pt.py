@@ -170,15 +170,15 @@ def simo_rnn_tut_pt(
             hidden_size=rnn_hidden_size,
             floor_size=floor_size,
             coord_size=coord_size)
-        model = SdaeSimoRnn(sdae, rnn)
+        model = SdaeSimoRnn(sdae, rnn).to(device)
     else:
         model = SimoRnn(
             input_size=rss_size,
             hidden_size=rnn_hidden_size,
             floor_size=floor_size,
-            coord_size=coord_size)
+            coord_size=coord_size).to(device)
 
-    print("Training the model ...", end='')
+    print("Training the model ...")
     startTime = timer()
     # N.B.: CrossEntropyLoss combines nn.LogSoftmax() and nn.NLLLoss() in one
     # single class. So we don't need softmax activation function in
@@ -215,7 +215,7 @@ def simo_rnn_tut_pt(
         print("[Epoch {0:3d}] loss: {1:.3f}".format(epoch+1, running_loss/len(dataloader)))
 
     elapsedTime = timer() - startTime
-    print(" completed in {0:.4e} s".format(elapsedTime))
+    print("Completed in {0:.4e} s".format(elapsedTime))
 
     print("Evaluating the model ...")
     model.eval()
