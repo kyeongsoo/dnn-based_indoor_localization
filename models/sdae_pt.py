@@ -16,10 +16,10 @@
 
 
 import os
-import numpy as np
-import pathlib
 import sys
+import pathlib
 from collections import OrderedDict
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -32,7 +32,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class NoiseRssDataset(Dataset):
-    """Convert a numpy RSS input to a dataset."""
+    """Convert a numpy RSS input to a PyTorch dataset."""
 
     def __init__(self, rss, corruption_level):
         self.rss = rss.astype('float32')
@@ -168,8 +168,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dataset",
-        help="a data set for training, validation, and testing; choices are 'uji' (default)'",
-        default='uji',
+        help="a data set for training, validation, and testing; choices are 'tut' (default), 'tut2', 'tut3' and 'uji'",
+        default='tut',
         type=str)
     parser.add_argument(
         "-B",
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     print("Buidling SDAE model ...")
     input_data = ds.training_data.rss_scaled
     model = sdae_pt(
-        dataset='uji',
+        dataset=dataset,
         input_data=input_data,
         preprocessor=preprocessor,
         hidden_layers=hidden_layers,
