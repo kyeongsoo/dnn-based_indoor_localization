@@ -202,7 +202,7 @@ class UJIIndoorLoc(object):
         training_labels_flr = labels_flr[:num_training_samples]
         testing_labels_bld = labels_bld[num_training_samples:]
         testing_labels_flr = labels_flr[num_training_samples:]
-        training_lables_loc = np.asarray(
+        training_labels_loc = np.asarray(
             pd.get_dummies(self.training_df['REFPOINT']))
         # BUILDINGID: 3
         # FLOOR: 5
@@ -219,7 +219,7 @@ class UJIIndoorLoc(object):
             training_labels = TrainingLabels(
                 building=training_labels_bld,
                 floor=training_labels_flr,
-                location=training_lables_loc)
+                location=training_labels_loc)
             self.training_data = TrainingData(
                 rss=training_rss,
                 rss_scaled=training_rss_scaled,
