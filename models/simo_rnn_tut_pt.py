@@ -60,34 +60,64 @@ class TutDataset(Dataset):
         return (self.rss[idx], self.floor[idx], self.coord[idx])
 
 
+class SimoRnnFnn(nn.Module):
+    """ SIMO RNN FNN for hierarchical indoor localization."""
+
+    def __init__(self, sdae, rnn, fnn_floor, fnn_coord, rnn_hidden_size, batch_size):
+        super(SimoRnn, self).__init__()
+        self.sdae = sdae
+        self.rnn = rnn
+        self.fnn_floor = fnn_floor
+        self.fnn_coord = fnn_coord
+        self.sdae_output_size = self.sdae.fc2.out_features
+
+    def forward(self, input, hidden):
+        x = self.sdae(input)
+        
+        output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
+        output_floor = self.fnn_floor(self.do_floor(output.view(self.batch_size, -1)))
+
+        output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
+        output_coord = self.fnn_coord(self.do_coord(output.view(self.batch_size, -1)))
+
+        return output_floor, output_coord, hidden
+
+    def initHidden(self):
+        return torch.zeros(self.num_layers, self.batch_size, self.rnn_hidden_size, device=device)
+
+    
 class SimoRnn(nn.Module):
     """ SIMO RNN for hierarchical indoor localization."""
 
-    def __init__(self, input_size, hidden_size, num_layers, dropout, floor_size, coord_size):
+    def __init__(self, input_size, hidden_size, num_layers, batch_size, dropout, floor_size, coord_size):
         super(SimoRnn, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.batch_size = batch_size
 
         self.rnn = nn.RNN(input_size=input_size,
                           hidden_size=hidden_size,
                           num_layers=num_layers,
-                          dropout=dropout)
+                          dropout=dropout,
+                          batch_first=True)
+        self.do_floor = nn.Dropout(p=dropout)
         self.fnn_floor = nn.Linear(hidden_size, floor_size)
+        self.do_coord = nn.Dropout(p=dropout)
         self.fnn_coord = nn.Linear(hidden_size, coord_size)
 
     def forward(self, input, hidden):
         output, hidden = self.rnn(input, hidden)
-        output_floor = self.fnn_floor(output.view(1, -1))
+        output_floor = self.fnn_floor(self.do_floor(output.view(self.batch_size, -1)))
         # output_floor = F.softmax(output, dim=1)
 
         output, hidden = self.rnn(input, hidden)
-        output_coord = self.fnn_coord(output.view(1, -1))
+        output_coord = self.fnn_coord(self.do_coord(output.view(self.batch_size, -1)))
         # output_coord = F.linear(output)
 
         return output_floor, output_coord, hidden
 
     def initHidden(self):
-        return torch.zeros(self.num_layers, 1, self.hidden_size, device=device)
+        return torch.zeros(self.num_layers, self.batch_size, self.hidden_size, device=device)
 
 
 class SdaeSimoRnn(nn.Module):
@@ -166,25 +196,54 @@ def simo_rnn_tut_pt(
             optimizer=optimizer,
             corruption_level=corruption_level,
             batch_size=batch_size,
-            # epochs=epochs,
-            epochs=300,
+            epochs=epochs,
+            # epochs=300,
             validation_split=validation_split)
-        rnn = SimoRnn(
-            input_size=sdae_hidden_layers[-1],
-            hidden_size=rnn_hidden_size,
-            num_layers=rnn_num_layers,
-            dropout=dropout,
-            floor_size=floor_size,
-            coord_size=coord_size)
-        model = SdaeSimoRnn(sdae, rnn).to(device)
+        input_dim = sdae_hidden_layers[-1]
     else:
-        model = SimoRnn(
-            input_size=rss_size,
-            hidden_size=rnn_hidden_size,
-            num_layers=rnn_num_layers,
-            dropout=dropout,
-            floor_size=floor_size,
-            coord_size=coord_size).to(device)
+        sdae = nn.Identity()
+        input_dim = rss_size
+
+    # FNN for floor
+    n_hl = len(floor_hidden_layers)
+    all_layers = [input_dim] + hidden_layers
+    units = []
+    for i in range(n_hl):
+        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i]))
+        units.append(('af'+str(i), nn.ReLU()))
+        units.append(('do'+str(i), nn.Dropout(p=dropout)))
+        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
+    fnn_floor = nn.Sequential(OrderedDict(units)).to(device)
+
+    # FNN for coordinates
+    n_hl = len(coord_hidden_layers)
+    all_layers = [input_dim] + hidden_layers
+    units = []
+    for i in range(n_hl):
+        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i]))
+        units.append(('af'+str(i), nn.ReLU()))
+        units.append(('do'+str(i), nn.Dropout(p=dropout)))
+        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
+    fnn_coord = nn.Sequential(OrderedDict(units)).to(device)
+                                  
+    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, rnn_hidden_size, batch_size)
+    # rnn = SimoRnn(
+    #     input_size=sdae_hidden_layers[-1],
+    #     hidden_size=rnn_hidden_size,
+    #     num_layers=rnn_num_layers,
+    #     batch_size=batch_size,
+    #     dropout=dropout,
+    #     floor_size=floor_size,
+    #     coord_size=coord_size)
+    # model = SdaeSimoRnn(sdae, rnn).to(device)
+    # else:
+    #     model = SimoRnn(
+    #         input_size=rss_size,
+    #         hidden_size=rnn_hidden_size,
+    #         num_layers=rnn_num_layers,
+    #         dropout=dropout,
+    #         floor_size=floor_size,
+    #         coord_size=coord_size).to(device)
 
     print("Training the model ...")
     startTime = timer()
@@ -195,8 +254,8 @@ def simo_rnn_tut_pt(
     criterion_coord = nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     dataset = TutDataset(tut.training_data)
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    # dataloader = DataLoader(dataset, batch_size=1, shuffle=True, drop_last=True)
 
     for epoch in range(epochs):
         model.train()
@@ -229,11 +288,11 @@ def simo_rnn_tut_pt(
     model.eval()
     rss = testing_data.rss_scaled
     flrs = np.argmax(testing_data.labels.floor, axis=1)
-    coord = testing_data.coord  # original coordinates
+    coords = testing_data.coord  # original coordinates
 
     dataset = TutDataset(tut.testing_data)
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+    # dataloader = DataLoader(dataset, batch_size=1, shuffle=False, drop_last=True)
 
     # calculate the classification accuracies and localization errors
     flrs_pred = list()
@@ -258,22 +317,21 @@ def simo_rnn_tut_pt(
         coords_scaled_pred.append(output_coord)
 
     flrs_pred = np.argmax(np.vstack(flrs_pred), axis=1)
+    flrs = flrs[:flrs_pred.shape[0]]
     flr_acc = accuracy_score(flrs, flrs_pred)
-    # flr_results = (np.equal(
-    #      flrs, np.argmax(flrs_pred, axis=1))).astype(int)
-    # flr_acc = flr_results.mean()
     coords_scaled_pred = np.vstack(coords_scaled_pred)
-    coord_est = coord_scaler.inverse_transform(coords_scaled_pred)  # inverse-scaling
+    coords_est = coord_scaler.inverse_transform(coords_scaled_pred)  # inverse-scaling
+    coords = coords[:coords_est.shape[0],:]
 
     # calculate 2D localization errors
-    dist_2d = norm(coord - coord_est, axis=1)
+    dist_2d = norm(coords - coords_est, axis=1)
     mean_error_2d = dist_2d.mean()
     median_error_2d = np.median(dist_2d)
 
     # calculate 3D localization errors
     flr_diff = np.absolute(flrs - flrs_pred)
     z_diff_squared = (flr_height**2)*np.square(flr_diff)
-    dist_3d = np.sqrt(np.sum(np.square(coord - coord_est), axis=1) + z_diff_squared)
+    dist_3d = np.sqrt(np.sum(np.square(coords - coords_est), axis=1) + z_diff_squared)
     mean_error_3d = dist_3d.mean()
     median_error_3d = np.median(dist_3d)
 
