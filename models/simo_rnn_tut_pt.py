@@ -63,11 +63,15 @@ class TutDataset(Dataset):
 class SimoRnn(nn.Module):
     """ SIMO RNN for hierarchical indoor localization."""
 
-    def __init__(self, input_size, hidden_size, floor_size, coord_size):
+    def __init__(self, input_size, hidden_size, num_layers, dropout, floor_size, coord_size):
         super(SimoRnn, self).__init__()
         self.hidden_size = hidden_size
+        self.num_layers = num_layers
 
-        self.rnn = nn.RNN(input_size, hidden_size)
+        self.rnn = nn.RNN(input_size=input_size,
+                          hidden_size=hidden_size,
+                          num_layers=num_layers,
+                          dropout=dropout)
         self.fnn_floor = nn.Linear(hidden_size, floor_size)
         self.fnn_coord = nn.Linear(hidden_size, coord_size)
 
@@ -83,7 +87,7 @@ class SimoRnn(nn.Module):
         return output_floor, output_coord, hidden
 
     def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(self.num_layers, 1, self.hidden_size, device=device)
 
 
 class SdaeSimoRnn(nn.Module):
@@ -113,10 +117,10 @@ def simo_rnn_tut_pt(
         dae_hidden_layers: list,
         sdae_hidden_layers: list,
         cache: bool,
-        common_hidden_layers: list,
+        rnn_hidden_size: int,
+        rnn_num_layers: int,
         floor_hidden_layers: list,
         coordinates_hidden_layers: list,
-        rnn_hidden_size: int,
         floor_weight: float,
         coordinates_weight: float,
         verbose: int
@@ -168,6 +172,8 @@ def simo_rnn_tut_pt(
         rnn = SimoRnn(
             input_size=sdae_hidden_layers[-1],
             hidden_size=rnn_hidden_size,
+            num_layers=rnn_num_layers,
+            dropout=dropout,
             floor_size=floor_size,
             coord_size=coord_size)
         model = SdaeSimoRnn(sdae, rnn).to(device)
@@ -175,6 +181,8 @@ def simo_rnn_tut_pt(
         model = SimoRnn(
             input_size=rss_size,
             hidden_size=rnn_hidden_size,
+            num_layers=rnn_num_layers,
+            dropout=dropout,
             floor_size=floor_size,
             coord_size=coord_size).to(device)
 
@@ -360,11 +368,15 @@ if __name__ == "__main__":
         "disable loading a trained model from/saving it to a cache",
         action='store_true')
     parser.add_argument(
-        "--common_hidden_layers",
-        help=
-        "comma-separated numbers of units in common hidden layers; default is '1024'",
-        default='1024',
-        type=str)
+        "--rnn_hidden_size",
+        help="number of features in the hidden state for RNN; default is 1024",
+        default=1024,
+        type=int)
+    parser.add_argument(
+        "--rnn_num_layers",
+        help="number of recurrent layers for RNN; default is 1",
+        default=1,
+        type=int)
     parser.add_argument(
         "--floor_hidden_layers",
         help=
@@ -377,11 +389,6 @@ if __name__ == "__main__":
         "comma-separated numbers of units in additional hidden layers for coordinates; default is '256'",
         default='256',
         type=str)
-    parser.add_argument(
-        "--rnn_hidden_size",
-        help="number of units in RNN hidden layer; default is 1024",
-        default=1024,
-        type=int)
     parser.add_argument(
         "--floor_weight",
         help="loss weight for a floor; default 1.0",
@@ -424,12 +431,6 @@ if __name__ == "__main__":
             int(i) for i in (args.sdae_hidden_layers).split(',')
         ]
     cache = not args.no_cache
-    if args.common_hidden_layers == '':
-        common_hidden_layers = ''
-    else:
-        common_hidden_layers = [
-            int(i) for i in (args.common_hidden_layers).split(',')
-        ]
     if args.floor_hidden_layers == '':
         floor_hidden_layers = ''
     else:
@@ -443,6 +444,7 @@ if __name__ == "__main__":
             int(i) for i in (args.coordinates_hidden_layers).split(',')
         ]
     rnn_hidden_size = args.rnn_hidden_size
+    rnn_num_layers = args.rnn_num_layers
     floor_weight = args.floor_weight
     coordinates_weight = args.coordinates_weight
     verbose = args.verbose
@@ -459,8 +461,8 @@ if __name__ == "__main__":
         rst = simo_rnn_tut_pt(frac, validation_split, preprocessor, batch_size,
                               epochs, optimizer, dropout, corruption_level,
                               dae_hidden_layers, sdae_hidden_layers, cache,
-                              common_hidden_layers, floor_hidden_layers,
-                              coordinates_hidden_layers, rnn_hidden_size,
+                              rnn_hidden_size, rnn_num_layers,
+                              floor_hidden_layers, coordinates_hidden_layers,
                               floor_weight, coordinates_weight, verbose)
         flr_accs[i] = rst.flr_acc
         mean_error_2ds[i] = rst.mean_error_2d
@@ -511,14 +513,8 @@ if __name__ == "__main__":
             for units in sdae_hidden_layers[1:]:
                 output_file.write("-%d" % units)
             output_file.write("\n")
-        output_file.write("  - Common hidden layers: ")
-        if common_hidden_layers == '':
-            output_file.write("N/A\n")
-        else:
-            output_file.write("%d" % common_hidden_layers[0])
-            for units in common_hidden_layers[1:]:
-                output_file.write("-%d" % units)
-            output_file.write("\n")
+        output_file.write("  - RNN hidden size: {0:d}\n".format(rnn_hidden_size))
+        output_file.write("  - RNN number of layers: {0:d}\n".format(rnn_num_layers))
         output_file.write("  - Floor hidden layers: ")
         if floor_hidden_layers == '':
             output_file.write("N/A\n")
