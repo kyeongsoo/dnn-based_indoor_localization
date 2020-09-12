@@ -21,7 +21,7 @@ import pathlib
 import argparse
 import datetime
 import numpy as np
-from collections import namedtuple
+from collections import OrderedDict, namedtuple
 from num2words import num2words
 from numpy.linalg import norm
 from sklearn.metrics import accuracy_score
@@ -44,6 +44,18 @@ from tut import TUT
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def build_fnn(input_size, hidden_layers, output_size):
+    n_hl = len(hidden_layers)
+    all_layers = [input_size] + hidden_layers + [output_size]
+    units = []
+    for i in range(n_hl+1):
+        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i])))
+        units.append(('af'+str(i), nn.ReLU()))
+        units.append(('do'+str(i), nn.Dropout(p=dropout)))
+        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
+    return nn.Sequential(OrderedDict(units))
+
+
 class TutDataset(Dataset):
     """Convert TUT training dataset to a PyTorch dataset."""
 
@@ -63,76 +75,28 @@ class TutDataset(Dataset):
 class SimoRnnFnn(nn.Module):
     """ SIMO RNN FNN for hierarchical indoor localization."""
 
-    def __init__(self, sdae, rnn, fnn_floor, fnn_coord, rnn_hidden_size, batch_size):
-        super(SimoRnn, self).__init__()
+    def __init__(self, sdae, rnn, fnn_floor, fnn_coord, batch_size):
+        super(SimoRnnFnn, self).__init__()
         self.sdae = sdae
         self.rnn = rnn
         self.fnn_floor = fnn_floor
         self.fnn_coord = fnn_coord
+        self.batch_size = batch_size
         self.sdae_output_size = self.sdae.fc2.out_features
 
     def forward(self, input, hidden):
         x = self.sdae(input)
         
         output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
-        output_floor = self.fnn_floor(self.do_floor(output.view(self.batch_size, -1)))
+        output_floor = self.fnn_floor(output.view(self.batch_size, -1))
 
         output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
-        output_coord = self.fnn_coord(self.do_coord(output.view(self.batch_size, -1)))
+        output_coord = self.fnn_coord(output.view(self.batch_size, -1))
 
         return output_floor, output_coord, hidden
 
     def initHidden(self):
-        return torch.zeros(self.num_layers, self.batch_size, self.rnn_hidden_size, device=device)
-
-    
-class SimoRnn(nn.Module):
-    """ SIMO RNN for hierarchical indoor localization."""
-
-    def __init__(self, input_size, hidden_size, num_layers, batch_size, dropout, floor_size, coord_size):
-        super(SimoRnn, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.batch_size = batch_size
-
-        self.rnn = nn.RNN(input_size=input_size,
-                          hidden_size=hidden_size,
-                          num_layers=num_layers,
-                          dropout=dropout,
-                          batch_first=True)
-        self.do_floor = nn.Dropout(p=dropout)
-        self.fnn_floor = nn.Linear(hidden_size, floor_size)
-        self.do_coord = nn.Dropout(p=dropout)
-        self.fnn_coord = nn.Linear(hidden_size, coord_size)
-
-    def forward(self, input, hidden):
-        output, hidden = self.rnn(input, hidden)
-        output_floor = self.fnn_floor(self.do_floor(output.view(self.batch_size, -1)))
-        # output_floor = F.softmax(output, dim=1)
-
-        output, hidden = self.rnn(input, hidden)
-        output_coord = self.fnn_coord(self.do_coord(output.view(self.batch_size, -1)))
-        # output_coord = F.linear(output)
-
-        return output_floor, output_coord, hidden
-
-    def initHidden(self):
-        return torch.zeros(self.num_layers, self.batch_size, self.hidden_size, device=device)
-
-
-class SdaeSimoRnn(nn.Module):
-    def __init__(self, sdae, rnn):
-        super(SdaeSimoRnn, self).__init__()
-        self.sdae = sdae
-        self.rnn = rnn
-        self.sdae_output_size = self.sdae.fc2.out_features
-
-    def forward(self, input, hidden):
-        x = self.sdae(input)
-        return self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
-
-    def initHidden(self):
-        return self.rnn.initHidden()
+        return torch.zeros(self.rnn.num_layers, self.batch_size, self.rnn.hidden_size)
 
 
 def simo_rnn_tut_pt(
@@ -199,51 +163,20 @@ def simo_rnn_tut_pt(
             epochs=epochs,
             # epochs=300,
             validation_split=validation_split)
-        input_dim = sdae_hidden_layers[-1]
+        input_size = sdae_hidden_layers[-1]
     else:
         sdae = nn.Identity()
-        input_dim = rss_size
+        input_size = rss_size
 
-    # FNN for floor
-    n_hl = len(floor_hidden_layers)
-    all_layers = [input_dim] + hidden_layers
-    units = []
-    for i in range(n_hl):
-        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i]))
-        units.append(('af'+str(i), nn.ReLU()))
-        units.append(('do'+str(i), nn.Dropout(p=dropout)))
-        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
-    fnn_floor = nn.Sequential(OrderedDict(units)).to(device)
-
-    # FNN for coordinates
-    n_hl = len(coord_hidden_layers)
-    all_layers = [input_dim] + hidden_layers
-    units = []
-    for i in range(n_hl):
-        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i]))
-        units.append(('af'+str(i), nn.ReLU()))
-        units.append(('do'+str(i), nn.Dropout(p=dropout)))
-        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
-    fnn_coord = nn.Sequential(OrderedDict(units)).to(device)
-                                  
-    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, rnn_hidden_size, batch_size)
-    # rnn = SimoRnn(
-    #     input_size=sdae_hidden_layers[-1],
-    #     hidden_size=rnn_hidden_size,
-    #     num_layers=rnn_num_layers,
-    #     batch_size=batch_size,
-    #     dropout=dropout,
-    #     floor_size=floor_size,
-    #     coord_size=coord_size)
-    # model = SdaeSimoRnn(sdae, rnn).to(device)
-    # else:
-    #     model = SimoRnn(
-    #         input_size=rss_size,
-    #         hidden_size=rnn_hidden_size,
-    #         num_layers=rnn_num_layers,
-    #         dropout=dropout,
-    #         floor_size=floor_size,
-    #         coord_size=coord_size).to(device)
+    rnn = nn.RNN(
+        input_size=input_size,
+        hidden_size=rnn_hidden_size,
+        num_layers=rnn_num_layers,
+        batch_first=True,
+        dropout=dropout)
+    fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size)
+    fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size)
+    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size).to(device)
 
     print("Training the model ...")
     startTime = timer()
@@ -292,7 +225,6 @@ def simo_rnn_tut_pt(
 
     dataset = TutDataset(tut.testing_data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True)
-    # dataloader = DataLoader(dataset, batch_size=1, shuffle=False, drop_last=True)
 
     # calculate the classification accuracies and localization errors
     flrs_pred = list()
