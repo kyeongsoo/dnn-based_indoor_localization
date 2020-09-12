@@ -5,10 +5,10 @@
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2020-09-07
 #
-# @brief A hierarchical indoor localization system based on Wi-Fi
-#        fingerprinting using a stacked denoising autoencoder (SDAE)
-#        and a single-input multi-output (SIMO) recurrent neural network
-#        (RNN) with TUT dataset. PyTorch version.
+# @brief A hierarchical indoor localization system based on Wi-Fi fingerprinting
+#        and a single-input multi-output (SIMO) recurrent neural network (RNN)
+#        and an optional stacked denoising autoencoder (SDAE) with TUT
+#        dataset. PyTorch version.
 #
 # @remarks The results are submitted to <a
 #          href="https://is-candar.org/GCA20/">The 5th International
@@ -20,12 +20,13 @@ import sys
 import pathlib
 import argparse
 import datetime
-import numpy as np
 from collections import OrderedDict, namedtuple
+from timeit import default_timer as timer
+import numpy as np
 from num2words import num2words
 from numpy.linalg import norm
 from sklearn.metrics import accuracy_score
-from timeit import default_timer as timer
+# PyTorch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,7 +45,7 @@ from tut import TUT
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def build_fnn(input_size, hidden_layers, output_size):
+def build_fnn(input_size, hidden_layers, output_size, dropout):
     n_hl = len(hidden_layers)
     all_layers = [input_size] + hidden_layers + [output_size]
     units = []
@@ -62,6 +63,8 @@ class TutDataset(Dataset):
     def __init__(self, tut):
         self.rss = tut.rss_scaled.astype('float32')
         # convert one-hot encoded labels to class-index-based ones
+        # for loss processing based on nn.CrossEntropyLoss:
+        # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
         self.floor = np.argmax(tut.labels.floor, axis=1)
         self.coord = tut.coord_scaled.astype('float32')
 
@@ -82,15 +85,19 @@ class SimoRnnFnn(nn.Module):
         self.fnn_floor = fnn_floor
         self.fnn_coord = fnn_coord
         self.batch_size = batch_size
-        self.sdae_output_size = self.sdae.fc2.out_features
 
     def forward(self, input, hidden):
-        x = self.sdae(input)
+        input = self.sdae(input)
+        x = torch.cat((input, torch.zeros(batch_size, 1).to(device)), dim=1)  # augmented input to RNN
+        rnn_input_size = x.shape[1]
         
-        output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
+        output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_floor = self.fnn_floor(output.view(self.batch_size, -1))
 
-        output, hidden = self.rnn(x.view(-1, 1, self.sdae_output_size), hidden)
+        # update the augmented input based on predicted floor index
+        x = torch.cat((input, torch.argmax(output_floor, dim=1).to(device, torch.float32).view(batch_size, 1)), dim=1)
+        
+        output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_coord = self.fnn_coord(output.view(self.batch_size, -1))
 
         return output_floor, output_coord, hidden
@@ -163,10 +170,10 @@ def simo_rnn_tut_pt(
             epochs=epochs,
             # epochs=300,
             validation_split=validation_split)
-        input_size = sdae_hidden_layers[-1]
+        input_size = sdae_hidden_layers[-1] + 1  # 1 for floor index
     else:
         sdae = nn.Identity()
-        input_size = rss_size
+        input_size = rss_size + 1  # 1 for floor index
 
     rnn = nn.RNN(
         input_size=input_size,
@@ -174,8 +181,8 @@ def simo_rnn_tut_pt(
         num_layers=rnn_num_layers,
         batch_first=True,
         dropout=dropout)
-    fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size)
-    fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size)
+    fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size, dropout)
+    fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size, dropout)
     model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size).to(device)
 
     print("Training the model ...")
@@ -203,9 +210,9 @@ def simo_rnn_tut_pt(
             coord = coord.to(device, non_blocking=True)
             optimizer.zero_grad()
 
-            # run the model recursively twice for floor and location
-            for _ in range(2):
-                output_floor, output_coord, hidden = model(rss, hidden)
+            # # run the model recursively twice for floor and location
+            # for _ in range(2):
+            output_floor, output_coord, hidden = model(rss, hidden)
 
             loss = floor_weight*criterion_floor(output_floor, floor)
             loss += coordinates_weight*criterion_coord(output_coord, coord)
@@ -460,8 +467,9 @@ if __name__ == "__main__":
         mean_error_3ds[i] = rst.mean_error_3d
         median_error_3ds[i] = rst.median_error_3d
         elapsedTimes[i] = rst.elapsedTime
+    print(rst)
 
-    # print out final results
+    # save the results
     base_dir = '../results/test/' + (os.path.splitext(
         os.path.basename(__file__))[0]).replace('test_', '') + '/' + 'tut'
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
