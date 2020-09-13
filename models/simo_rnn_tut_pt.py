@@ -5,14 +5,12 @@
 # @author   Kyeong Soo (Joseph) Kim <kyeongsoo.kim@gmail.com>
 # @date     2020-09-07
 #
-# @brief A hierarchical indoor localization system based on Wi-Fi fingerprinting
-#        and a single-input multi-output (SIMO) recurrent neural network (RNN)
-#        and an optional stacked denoising autoencoder (SDAE) with TUT
-#        dataset. PyTorch version.
+# @brief Hierarchical indoor localization based on Wi-Fi fingerprinting
+#        and a single-input multi-output (SIMO) recurrent neural network
+#        (RNN) and an optional stacked denoising autoencoder (SDAE) with
+#        TUT dataset for PyTorch.
 #
-# @remarks The results are submitted to <a
-#          href="https://is-candar.org/GCA20/">The 5th International
-#          Workshop on GPU Computing and AI (GCA'20)</a>.
+# @remarks The results are submitted to XXX (TBD).
 
 
 import os
@@ -29,11 +27,10 @@ from sklearn.metrics import accuracy_score
 # PyTorch
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from torchsummary import summary
+# from torchsummary import summary
 # user modules
 sys.path.insert(0, '../models')
 from sdae_pt import sdae_pt
@@ -48,13 +45,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def build_fnn(input_size, hidden_layers, output_size, dropout):
     n_hl = len(hidden_layers)
     all_layers = [input_size] + hidden_layers + [output_size]
-    units = []
+    layers = []
     for i in range(n_hl+1):
-        units.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i])))
-        units.append(('af'+str(i), nn.ReLU()))
-        units.append(('do'+str(i), nn.Dropout(p=dropout)))
-        units.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
-    return nn.Sequential(OrderedDict(units))
+        layers.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i])))
+        layers.append(('af'+str(i), nn.ReLU()))
+        layers.append(('do'+str(i), nn.Dropout(p=dropout)))
+        layers.append(('fc'+str(i), nn.Linear(all_layers[i], all_layers[i+1])))
+    return nn.Sequential(OrderedDict(layers))
 
 
 class TutDataset(Dataset):
@@ -69,7 +66,7 @@ class TutDataset(Dataset):
         self.coord = tut.coord_scaled.astype('float32')
 
     def __len__(self):
-        return (len(self.rss))
+        return len(self.rss)
 
     def __getitem__(self, idx):
         return (self.rss[idx], self.floor[idx], self.coord[idx])
@@ -90,13 +87,13 @@ class SimoRnnFnn(nn.Module):
         input = self.sdae(input)
         x = torch.cat((input, torch.zeros(batch_size, 1).to(device)), dim=1)  # augmented input to RNN
         rnn_input_size = x.shape[1]
-        
+
         output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_floor = self.fnn_floor(output.view(self.batch_size, -1))
 
         # update the augmented input based on predicted floor index
         x = torch.cat((input, torch.argmax(output_floor, dim=1).to(device, torch.float32).view(batch_size, 1)), dim=1)
-        
+
         output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_coord = self.fnn_coord(output.view(self.batch_size, -1))
 
@@ -210,8 +207,7 @@ def simo_rnn_tut_pt(
             coord = coord.to(device, non_blocking=True)
             optimizer.zero_grad()
 
-            # # run the model recursively twice for floor and location
-            # for _ in range(2):
+            # forward pass
             output_floor, output_coord, hidden = model(rss, hidden)
 
             loss = floor_weight*criterion_floor(output_floor, floor)
@@ -219,6 +215,7 @@ def simo_rnn_tut_pt(
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+
         print("[Epoch {0:3d}] loss: {1:.3f}".format(epoch+1, running_loss/len(dataloader)))
 
     elapsedTime = timer() - startTime
