@@ -39,9 +39,6 @@ from mean_ci import mean_ci
 from tut import TUT
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 def build_fnn(input_size, hidden_layers, output_size, dropout):
     n_hl = len(hidden_layers)
     all_layers = [input_size] + hidden_layers + [output_size]
@@ -75,24 +72,25 @@ class TutDataset(Dataset):
 class SimoRnnFnn(nn.Module):
     """ SIMO RNN FNN for hierarchical indoor localization."""
 
-    def __init__(self, sdae, rnn, fnn_floor, fnn_coord, batch_size):
+    def __init__(self, sdae, rnn, fnn_floor, fnn_coord, batch_size, device):
         super(SimoRnnFnn, self).__init__()
         self.sdae = sdae
         self.rnn = rnn
         self.fnn_floor = fnn_floor
         self.fnn_coord = fnn_coord
         self.batch_size = batch_size
+        self.device = device
 
     def forward(self, input, hidden):
         input = self.sdae(input)
-        x = torch.cat((input, torch.zeros(batch_size, 1).to(device)), dim=1)  # augmented input to RNN
+        x = torch.cat((input, torch.zeros(self.batch_size, 1).to(self.device)), dim=1)  # augmented input to RNN
         rnn_input_size = x.shape[1]
 
         output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_floor = self.fnn_floor(output.view(self.batch_size, -1))
 
         # update the augmented input based on predicted floor index
-        x = torch.cat((input, torch.argmax(output_floor, dim=1).to(device, torch.float32).view(batch_size, 1)), dim=1)
+        x = torch.cat((input, torch.argmax(output_floor, dim=1).to(self.device, torch.float32).view(self.batch_size, 1)), dim=1)
 
         output, hidden = self.rnn(x.view(-1, 1, rnn_input_size), hidden)
         output_coord = self.fnn_coord(output.view(self.batch_size, -1))
@@ -121,7 +119,8 @@ def simo_rnn_tut_pt(
         coordinates_hidden_layers: list,
         floor_weight: float,
         coordinates_weight: float,
-        verbose: int
+        verbose: int,
+        device: torch.device
 ):
     """Multi-building and multi-floor indoor localization based on hybrid
     buidling/floor classification and coordinates regression using SDAE and
@@ -180,7 +179,7 @@ def simo_rnn_tut_pt(
         dropout=dropout)
     fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size, dropout)
     fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size, dropout)
-    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size).to(device)
+    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size, device=device).to(device)
 
     print("Training the model ...")
     startTime = timer()
@@ -444,6 +443,7 @@ if __name__ == "__main__":
     verbose = args.verbose
 
     # run simo_rnn_tut_pt() num_runs times
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     flr_accs = np.empty(num_runs)
     mean_error_2ds = np.empty(num_runs)
     median_error_2ds = np.empty(num_runs)
@@ -457,7 +457,8 @@ if __name__ == "__main__":
                               dae_hidden_layers, sdae_hidden_layers, cache,
                               rnn_hidden_size, rnn_num_layers,
                               floor_hidden_layers, coordinates_hidden_layers,
-                              floor_weight, coordinates_weight, verbose)
+                              floor_weight, coordinates_weight, verbose,
+                              device=device)
         flr_accs[i] = rst.flr_acc
         mean_error_2ds[i] = rst.mean_error_2d
         median_error_2ds[i] = rst.median_error_2d
