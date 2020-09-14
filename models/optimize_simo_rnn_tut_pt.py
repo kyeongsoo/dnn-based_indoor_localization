@@ -36,7 +36,7 @@ def train_evaluate(parameterization):
                               validation_split=0.2,
                               preprocessor='standard_scaler',
                               batch_size=parameterization.get('batch_size'),
-                              epochs=10,
+                              epochs=300,
                               optimizer='SGD',
                               dropout=parameterization.get('dropout'),
                               corruption_level=0.1,
@@ -49,7 +49,7 @@ def train_evaluate(parameterization):
                               coordinates_hidden_layers=[128],
                               floor_weight=1.0,
                               coordinates_weight=1.0,
-                              verbose=0,
+                              log_level='WARNING',
                               device=device)
         mean_error_3ds[i] = rst.mean_error_3d
 
@@ -81,4 +81,3 @@ best_parameters, values, experiment, model = optimize(
     evaluation_function=train_evaluate,
     objective_name='mean_3d_error',
 )
-
