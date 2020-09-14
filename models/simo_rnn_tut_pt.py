@@ -41,6 +41,7 @@ from tut import TUT
 
 
 # create logger
+logging.basicConfig()           # to write to stdout
 logger = logging.getLogger(__name__)
 
 
@@ -234,7 +235,7 @@ def simo_rnn_tut_pt(
             optimizer.step()
             running_loss += loss.item()
 
-        logger.info("[Epoch %3d] loss: %.3f", epoch+1, running_loss/len(dataloader))
+        logger.debug("[Epoch %3d] loss: %.3f", epoch+1, running_loss/len(dataloader))
 
     elapsedTime = timer() - startTime
     logger.info("Completed in %.4e s", elapsedTime)
@@ -415,8 +416,8 @@ if __name__ == "__main__":
         "-L",
         "--log_level",
         help=
-        "logging level: 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'; default is 'DEBUG'",
-        default='DEBUG',
+        "logging level: 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'; default is 'INFO'",
+        default='INFO',
         type=str)
     args = parser.parse_args()
 
@@ -484,7 +485,7 @@ if __name__ == "__main__":
     median_error_3ds = np.empty(num_runs)
     elapsedTimes = np.empty(num_runs)
     for i in range(num_runs):
-        logger.info("\n########## %ss run ##########", num2words(i+1, to='ordinal_num'))
+        logger.debug("\n########## %s run ##########", num2words(i+1, to='ordinal_num'))
         rst = simo_rnn_tut_pt(frac, validation_split, preprocessor, batch_size,
                               epochs, optimizer, dropout, corruption_level,
                               dae_hidden_layers, sdae_hidden_layers, cache,
@@ -498,7 +499,7 @@ if __name__ == "__main__":
         mean_error_3ds[i] = rst.mean_error_3d
         median_error_3ds[i] = rst.median_error_3d
         elapsedTimes[i] = rst.elapsedTime
-    logger.info(str(rst))
+    logger.debug(str(rst))
 
     # save the results
     base_dir = '../results/test/' + (os.path.splitext(
