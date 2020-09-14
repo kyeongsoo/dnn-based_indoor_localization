@@ -18,6 +18,7 @@ import sys
 import pathlib
 import argparse
 import datetime
+import logging
 from collections import OrderedDict, namedtuple
 from timeit import default_timer as timer
 import numpy as np
@@ -37,6 +38,10 @@ from sdae_pt import sdae_pt
 sys.path.insert(0, '../utils')
 from mean_ci import mean_ci
 from tut import TUT
+
+
+# create logger
+logger = logging.getLogger(__name__)
 
 
 def build_fnn(input_size, hidden_layers, output_size, dropout):
@@ -119,7 +124,7 @@ def simo_rnn_tut_pt(
         coordinates_hidden_layers: list,
         floor_weight: float,
         coordinates_weight: float,
-        verbose: int,
+        log_level: str,
         device: torch.device
 ):
     """Multi-building and multi-floor indoor localization based on hybrid
@@ -130,8 +135,22 @@ def simo_rnn_tut_pt(
 
     """
 
+    # set logging level
+    if log_level == 'CRITICAL':
+        logger.setLevel(logging.CRITICAL)
+    elif log_level == 'ERROR':
+        logger.setLevel(logging.ERROR)
+    elif log_level == 'WARNING':
+        logger.setLevel(logging.WARNING)
+    elif log_level == 'INFO':
+        logger.setLevel(logging.INFO)
+    elif log_level == 'DEBUG':
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.NOTSET)
+
     # load datasets after scaling
-    print("Loading the data ...")
+    logger.info("Loading the data ...")
     tut = TUT(
         cache=cache,
         frac=frac,
@@ -143,7 +162,7 @@ def simo_rnn_tut_pt(
     # testing_df = tut.testing_df
     testing_data = tut.testing_data
 
-    print("Building the model ...")
+    logger.info("Building the model ...")
     rss = training_data.rss_scaled
     coord = training_data.coord_scaled
     coord_scaler = training_data.coord_scaler  # for inverse transform
@@ -181,7 +200,7 @@ def simo_rnn_tut_pt(
     fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size, dropout)
     model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size, device=device).to(device)
 
-    print("Training the model ...")
+    logger.info("Training the model ...")
     startTime = timer()
     # N.B.: CrossEntropyLoss combines nn.LogSoftmax() and nn.NLLLoss() in one
     # single class. So we don't need softmax activation function in
@@ -215,12 +234,12 @@ def simo_rnn_tut_pt(
             optimizer.step()
             running_loss += loss.item()
 
-        print("[Epoch {0:3d}] loss: {1:.3f}".format(epoch+1, running_loss/len(dataloader)))
+        logger.info("[Epoch %3d] loss: %.3f", epoch+1, running_loss/len(dataloader))
 
     elapsedTime = timer() - startTime
-    print("Completed in {0:.4e} s".format(elapsedTime))
+    logger.info("Completed in %.4e s", elapsedTime)
 
-    print("Evaluating the model ...")
+    logger.info("Evaluating the model ...")
     model.eval()
     rss = testing_data.rss_scaled
     flrs = np.argmax(testing_data.labels.floor, axis=1)
@@ -393,12 +412,12 @@ if __name__ == "__main__":
         default=1.0,
         type=float)
     parser.add_argument(
-        "-V",
-        "--verbose",
+        "-L",
+        "--log_level",
         help=
-        "verbosity mode: 0 = silent, 1 = progress bar, 2 = one line per epoch; default is 0",
-        default=0,
-        type=int)
+        "logging level: 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'; default is 'DEBUG'",
+        default='DEBUG',
+        type=str)
     args = parser.parse_args()
 
     # set variables using command-line arguments
@@ -440,7 +459,21 @@ if __name__ == "__main__":
     rnn_num_layers = args.rnn_num_layers
     floor_weight = args.floor_weight
     coordinates_weight = args.coordinates_weight
-    verbose = args.verbose
+    log_level = args.log_level
+
+    # set logging level
+    if log_level == 'CRITICAL':
+        logger.setLevel(logging.CRITICAL)
+    elif log_level == 'ERROR':
+        logger.setLevel(logging.ERROR)
+    elif log_level == 'WARNING':
+        logger.setLevel(logging.WARNING)
+    elif log_level == 'INFO':
+        logger.setLevel(logging.INFO)
+    elif log_level == 'DEBUG':
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.NOTSET)
 
     # run simo_rnn_tut_pt() num_runs times
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -451,13 +484,13 @@ if __name__ == "__main__":
     median_error_3ds = np.empty(num_runs)
     elapsedTimes = np.empty(num_runs)
     for i in range(num_runs):
-        print("\n########## {0:s} run ##########".format(num2words(i+1, to='ordinal_num')))
+        logger.info("\n########## %ss run ##########", num2words(i+1, to='ordinal_num'))
         rst = simo_rnn_tut_pt(frac, validation_split, preprocessor, batch_size,
                               epochs, optimizer, dropout, corruption_level,
                               dae_hidden_layers, sdae_hidden_layers, cache,
                               rnn_hidden_size, rnn_num_layers,
                               floor_hidden_layers, coordinates_hidden_layers,
-                              floor_weight, coordinates_weight, verbose,
+                              floor_weight, coordinates_weight, log_level,
                               device=device)
         flr_accs[i] = rst.flr_acc
         mean_error_2ds[i] = rst.mean_error_2d
@@ -465,7 +498,7 @@ if __name__ == "__main__":
         mean_error_3ds[i] = rst.mean_error_3d
         median_error_3ds[i] = rst.median_error_3d
         elapsedTimes[i] = rst.elapsedTime
-    print(rst)
+    logger.info(str(rst))
 
     # save the results
     base_dir = '../results/test/' + (os.path.splitext(
