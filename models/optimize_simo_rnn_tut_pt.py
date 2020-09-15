@@ -54,7 +54,7 @@ best_parameters, values, experiment, model = optimize(
         {
             "name": "batch_size",
             "type": "choice",
-            "values": [4, 8, 16, 32, 64, 128, 256],
+            "values": [2, 4, 8, 16, 32, 64, 128, 256],
         },
         {
             "name": "dropout",
@@ -70,7 +70,7 @@ best_parameters, values, experiment, model = optimize(
         {
             "name": "rnn_num_layers",
             "type": "choice",
-            "values": [1, 2]
+            "values": [1, 2, 3]
         },
         # {
         #     "name": "floor_hidden_layers",
@@ -87,6 +87,10 @@ best_parameters, values, experiment, model = optimize(
     objective_name='mean_3d_error',
 )
 
-
-print(best_parameters)
-print(values)
+print('Best parameters')
+for x in best_parameters:
+    print("- {0}: {1}".format(x, best_parameters[x]))
+print('Values')
+avg, cov = values
+print(" - Avg. of {0}: {1}".format(list(avg.keys())[0], list(avg.values())[0]))
+print(" - Cov. of {0}: {1}".format(list(cov.keys())[0], list(list(cov.values())[0].values())[0]))
