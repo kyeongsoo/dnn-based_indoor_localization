@@ -196,7 +196,7 @@ def simo_rnn_tut_pt(
         hidden_size=rnn_hidden_size,
         num_layers=rnn_num_layers,
         batch_first=True,
-        dropout=dropout)
+        dropout=(dropout if rnn_num_layers > 1 else 0))  # to turn off warning message
     fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size, dropout)
     fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size, dropout)
     model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size, device=device).to(device)
