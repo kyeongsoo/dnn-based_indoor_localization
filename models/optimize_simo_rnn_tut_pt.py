@@ -54,12 +54,12 @@ best_parameters, values, experiment, model = optimize(
         {
             "name": "batch_size",
             "type": "choice",
-            "values": [2, 4, 8, 16, 32, 64, 128, 256],
+            "values": [4, 8, 16, 32, 64, 128, 256],
         },
         {
             "name": "dropout",
             "type": "range",
-            "bounds": [0.01, 0.5],
+            "bounds": [0.05, 0.5],
             "log_scale": True,
         },
         {
