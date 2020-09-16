@@ -45,11 +45,10 @@ logging.basicConfig()           # to write to stdout
 logger = logging.getLogger(__name__)
 
 
-def build_fnn(input_size, hidden_layers, output_size, dropout):
-    n_hl = len(hidden_layers)
-    all_layers = [input_size] + hidden_layers + [output_size]
+def build_fnn(input_size, hidden_size, num_layers, output_size, dropout):
+    all_layers = [input_size] + [hidden_size]*num_layers + [output_size]
     layers = []
-    for i in range(n_hl+1):
+    for i in range(num_layers+1):
         layers.append(('bn'+str(i), nn.BatchNorm1d(num_features=all_layers[i])))
         layers.append(('af'+str(i), nn.ReLU()))
         layers.append(('do'+str(i), nn.Dropout(p=dropout)))
@@ -121,8 +120,10 @@ def simo_rnn_tut_pt(
         cache: bool,
         rnn_hidden_size: int,
         rnn_num_layers: int,
-        floor_hidden_layers: list,
-        coordinates_hidden_layers: list,
+        floor_hidden_size: int,
+        floor_num_layers: int,
+        coordinates_hidden_size: int,
+        coordinates_num_layers: int,
         floor_weight: float,
         coordinates_weight: float,
         log_level: str,
@@ -196,10 +197,15 @@ def simo_rnn_tut_pt(
         hidden_size=rnn_hidden_size,
         num_layers=rnn_num_layers,
         batch_first=True,
-        dropout=(dropout if rnn_num_layers > 1 else 0.0))  # to turn off warning message
-    fnn_floor = build_fnn(rnn_hidden_size, floor_hidden_layers, floor_size, dropout)
-    fnn_coord = build_fnn(rnn_hidden_size, coordinates_hidden_layers, coord_size, dropout)
-    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size, device=device).to(device)
+        dropout=(dropout if rnn_num_layers > 1 else 0.0))  # to turn off RNN warning messages
+    fnn_floor = build_fnn(rnn_hidden_size,
+                          floor_hidden_size, floor_num_layers,
+                          floor_size, dropout)
+    fnn_coord = build_fnn(rnn_hidden_size,
+                          coordinates_hidden_size, coordinates_num_layers,
+                          coord_size, dropout)
+    model = SimoRnnFnn(sdae, rnn, fnn_floor, fnn_coord, batch_size,
+                       device=device).to(device)
 
     logger.info("Training the model ...")
     startTime = timer()
@@ -391,17 +397,25 @@ if __name__ == "__main__":
         default=1,
         type=int)
     parser.add_argument(
-        "--floor_hidden_layers",
-        help=
-        "comma-separated numbers of units in additional hidden layers for floor; default is '256'",
-        default='256',
-        type=str)
+        "--floor_hidden_size",
+        help="number of features in the hidden state for floor; default is 1024",
+        default=1024,
+        type=int)
     parser.add_argument(
-        "--coordinates_hidden_layers",
-        help=
-        "comma-separated numbers of units in additional hidden layers for coordinates; default is '256'",
-        default='256',
-        type=str)
+        "--floor_num_layers",
+        help="number of recurrent layers for floor; default is 1",
+        default=1,
+        type=int)
+    parser.add_argument(
+        "--coordinates_hidden_size",
+        help="number of features in the hidden state for coordinates; default is 1024",
+        default=1024,
+        type=int)
+    parser.add_argument(
+        "--coordinates_num_layers",
+        help="number of recurrent layers for coordinates; default is 1",
+        default=1,
+        type=int)
     parser.add_argument(
         "--floor_weight",
         help="loss weight for a floor; default 1.0",
@@ -444,20 +458,12 @@ if __name__ == "__main__":
             int(i) for i in (args.sdae_hidden_layers).split(',')
         ]
     cache = not args.no_cache
-    if args.floor_hidden_layers == '':
-        floor_hidden_layers = ''
-    else:
-        floor_hidden_layers = [
-            int(i) for i in (args.floor_hidden_layers).split(',')
-        ]
-    if args.coordinates_hidden_layers == '':
-        coordinates_hidden_layers = ''
-    else:
-        coordinates_hidden_layers = [
-            int(i) for i in (args.coordinates_hidden_layers).split(',')
-        ]
     rnn_hidden_size = args.rnn_hidden_size
     rnn_num_layers = args.rnn_num_layers
+    floor_hidden_size = args.floor_hidden_size
+    floor_num_layers = args.floor_num_layers
+    coordinates_hidden_size = args.coordinates_hidden_size
+    coordinates_num_layers = args.coordinates_num_layers
     floor_weight = args.floor_weight
     coordinates_weight = args.coordinates_weight
     log_level = args.log_level
@@ -490,7 +496,8 @@ if __name__ == "__main__":
                               epochs, optimizer, dropout, corruption_level,
                               dae_hidden_layers, sdae_hidden_layers, cache,
                               rnn_hidden_size, rnn_num_layers,
-                              floor_hidden_layers, coordinates_hidden_layers,
+                              floor_hidden_size, floor_num_layers,
+                              coordinates_hidden_size, coordinates_num_layers,
                               floor_weight, coordinates_weight, log_level,
                               device=device)
         flr_accs[i] = rst.flr_acc
@@ -545,22 +552,10 @@ if __name__ == "__main__":
             output_file.write("\n")
         output_file.write("  - RNN hidden size: {0:d}\n".format(rnn_hidden_size))
         output_file.write("  - RNN number of layers: {0:d}\n".format(rnn_num_layers))
-        output_file.write("  - Floor hidden layers: ")
-        if floor_hidden_layers == '':
-            output_file.write("N/A\n")
-        else:
-            output_file.write("%d" % floor_hidden_layers[0])
-            for units in floor_hidden_layers[1:]:
-                output_file.write("-%d" % units)
-            output_file.write("\n")
-        output_file.write("  - Coordinates hidden layers: ")
-        if coordinates_hidden_layers == '':
-            output_file.write("N/A\n")
-        else:
-            output_file.write("%d" % coordinates_hidden_layers[0])
-            for units in coordinates_hidden_layers[1:]:
-                output_file.write("-%d" % units)
-            output_file.write("\n")
+        output_file.write("  - Floor hidden size: {0:d}\n".format(floor_hidden_size))
+        output_file.write("  - Floor number of layers: {0:d}\n".format(floor_num_layers))
+        output_file.write("  - Coordinates hidden size: {0:d}\n".format(coordinates_hidden_size))
+        output_file.write("  - Coordinates number of layers: {0:d}\n".format(coordinates_num_layers))
         output_file.write("  - Floor loss weight: %.2f\n" % floor_weight)
         output_file.write(
             "  - Coordinates loss weight: %.2f\n" % coordinates_weight)
