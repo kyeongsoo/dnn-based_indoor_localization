@@ -36,10 +36,10 @@ def train_evaluate(parameterization):
                               cache=True,
                               rnn_hidden_size=parameterization.get('rnn_hidden_size'),
                               rnn_num_layers=parameterization.get('rnn_num_layers'),
-                              floor_hidden_layers=[1024],
-                              # floor_hidden_layers=parameterization.get('floor_hidden_layers'),
-                              coordinates_hidden_layers=[1024],
-                              # coordinates_hidden_layers=parameterization.get('coordinates_hidden_layers'),
+                              floor_hidden_size=parameterization.get('floor_hidden_size'),
+                              floor_num_layers=parameterization.get('floor_num_layers'),
+                              coordinates_hidden_size=parameterization.get('coordinates_hidden_size'),
+                              coordinates_num_layers=parameterization.get('coordinates_num_layers'),
                               floor_weight=1.0,
                               coordinates_weight=1.0,
                               log_level='WARNING',
@@ -72,16 +72,26 @@ best_parameters, values, experiment, model = optimize(
             "type": "choice",
             "values": [1, 2, 3]
         },
-        # {
-        #     "name": "floor_hidden_layers",
-        #     "type": "choice",
-        #     "values": [[256], [512], [1024]]
-        # },
-        # {
-        #     "name": "floor_hidden_layers",
-        #     "type": "choice",
-        #     "values": [[256], [512], [1024]]
-        # },
+        {
+            "name": "floor_hidden_size",
+            "type": "choice",
+            "values": [16, 64, 128, 256, 512, 1024]
+        },
+        {
+            "name": "floor_num_layers",
+            "type": "choice",
+            "values": [1, 2, 3]
+        },
+        {
+            "name": "coordinates_hidden_size",
+            "type": "choice",
+            "values": [16, 64, 128, 256, 512, 1024]
+        },
+        {
+            "name": "coordinates_num_layers",
+            "type": "choice",
+            "values": [1, 2, 3]
+        },
     ],
     evaluation_function=train_evaluate,
     objective_name='mean_3d_error',
