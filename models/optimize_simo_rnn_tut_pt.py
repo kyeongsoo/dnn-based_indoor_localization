@@ -17,7 +17,7 @@ from simo_rnn_tut_pt import simo_rnn_tut_pt
 torch.manual_seed(12345)
 dtype = torch.float
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-num_runs = 2
+num_runs = 10
 mean_error_3ds = np.empty(num_runs)
 
 
@@ -95,6 +95,7 @@ best_parameters, values, experiment, model = optimize(
     ],
     evaluation_function=train_evaluate,
     objective_name='mean_3d_error',
+    total_trials=100            # default is 20
 )
 
 print('Best parameters')
