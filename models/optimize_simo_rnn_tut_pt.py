@@ -42,7 +42,7 @@ def train_evaluate(parameterization):
                               coordinates_num_layers=parameterization.get('coordinates_num_layers'),
                               floor_weight=1.0,
                               coordinates_weight=1.0,
-                              log_level='WARNING',
+                              log_level='INFO',
                               device=device)
         mean_error_3ds[i] = rst.mean_error_3d
 
@@ -98,10 +98,10 @@ best_parameters, values, experiment, model = optimize(
     total_trials=100            # default is 20
 )
 
-print('Best parameters')
+print('* Best parameters')
 for x in best_parameters:
     print("- {0}: {1}".format(x, best_parameters[x]))
-print('Values')
+print('* Values')
 avg, cov = values
 print(" - Avg. of {0}: {1}".format(list(avg.keys())[0], list(avg.values())[0]))
 print(" - Cov. of {0}: {1}".format(list(cov.keys())[0], list(list(cov.values())[0].values())[0]))
