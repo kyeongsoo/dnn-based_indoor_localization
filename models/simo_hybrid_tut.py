@@ -80,7 +80,7 @@ def simo_hybrid_tut(
     # initialize numpy, random, TensorFlow, and keras
     np.random.seed()
     rn.seed()
-    tf.random.set_seed(rn.randint(0, 1000000))
+    tf.random.set_random_seed(rn.randint(0, 1000000))
     if gpu_id >= 0:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
